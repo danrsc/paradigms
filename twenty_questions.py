@@ -8,7 +8,7 @@ from six import itervalues
 __all__ = ['Word_EventType', 'Question_EventType', 'Response_EventType', 'EventTypes', 'WordAndResponse',
            'QuestionEvents', 'num_20questions_words', 'Event20Questions', 'WordGrouping', 'sort_key_20questions',
            'category_counts_20questions', 'create_stimuli_20questions', 'read_events_20questions',
-           'load_block_stimuli_20questions']
+           'load_block_stimuli_20questions', 'sudre_perceptual_features']
 
 Word_EventType = 'word'
 Question_EventType = 'question'
@@ -17,6 +17,20 @@ EventTypes = [Word_EventType, Question_EventType, Response_EventType]
 
 WordAndResponse = namedtuple('WordAndResponse', 'word_event response_event')
 QuestionEvents = namedtuple('QuestionEvents', 'question_event word_response_events')
+
+sudre_perceptual_features = [
+    'Word length',
+    'White pixel count',
+    'Internal details',
+    'Verticality',
+    'Horizontalness',
+    'Left-diagonalness',
+    'Right-diagonalness',
+    'Aspect-ratio: skinny->fat',
+    'Prickiliness',
+    'Line curviness',
+    '3D curviness'
+]
 
 __questions_in_id_order = [
     'Is it manmade?',
@@ -104,6 +118,7 @@ __words_in_id_order = [
     'window'
 ]
 
+words_20questions = list(__words_in_id_order)
 num_20questions_words = len(__words_in_id_order)
 
 
