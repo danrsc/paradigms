@@ -7,26 +7,26 @@ __all__ = ['Event', 'BlockEvents', 'BlockStimuli', 'StimulusEvents', 'Stimulus']
 class Event:
 
     def __init__(self, stimulus, duration, trigger, time_stamp):
-        self.__stimulus = stimulus
-        self.__duration = duration
-        self.__trigger = trigger
-        self.__time_stamp = time_stamp
+        self._stimulus = stimulus
+        self._duration = duration
+        self._trigger = trigger
+        self._time_stamp = time_stamp
 
     @property
     def stimulus(self):
-        return self.__stimulus
+        return self._stimulus
 
     @property
     def duration(self):
-        return self.__duration
+        return self._duration
 
     @property
     def trigger(self):
-        return self.__trigger
+        return self._trigger
 
     @property
     def time_stamp(self):
-        return self.__time_stamp
+        return self._time_stamp
 
 
 class BlockEvents:
