@@ -36,7 +36,8 @@ def make_label_manager_from_npz(
         stimuli_name='stimuli',
         features_name='features',
         excluded_features=None,
-        make_key=_lower_key):
+        make_key=_lower_key,
+        rescale=None):
     loaded = numpy.load(path)
     if vectors_name not in loaded:
         raise ValueError('Unable to find vectors in loaded file: {}'.format(path))
@@ -59,6 +60,9 @@ def make_label_manager_from_npz(
         if numpy.count_nonzero(indicator_excluded) > 0:
             vectors = vectors[:, ~indicator_excluded]
             features = final_features
+
+    if rescale is not None:
+        vectors = vectors * rescale
 
     embedding_dict = dict()
 
