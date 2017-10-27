@@ -65,12 +65,19 @@
 %%%%%%%%%%%%%%%%%%%%
 % HEADER           %
 %%%%%%%%%%%%%%%%%%%%
-keyval_double:startStimulusTrigger=5
-keyval_double:startSentenceTrigger=3
-keyval_double_list:endStimulusTriggers=4
+keyval_double:instruction_trigger=1
+keyval_double:start_stimulus_trigger=5
+keyval_double_list:end_stimulus_triggers=4
+keyval_double:question_trigger=4
+keyval_double_list:yes_no_triggers=254,255
+keyval_double:word_duration=.3
+keyval_double:word_spacing_duration=.2
+
 columns=stimulus:spaceDelimTagged,is_active:bool,question:spaceDelimTagged,is_yes_correct:bool
 stimulus:unnamed_field:word=string
 stimulus:unnamed_field:POS=string
+question:unnamed_field:word=string
+question:unnamed_field:POS=string
 %%%%%%%%%%%%%%%%%%%%
 ***** % END HEADER %
 %%%%%%%%%%%%%%%%%%%%

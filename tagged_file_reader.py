@@ -42,9 +42,9 @@ def _split_non_escaped(line, delim, is_keep_empty, is_unescape=False):
                 tokens.append(line[index_start:index_delim])
         tokens.append(line[indices[-1] + 1:])
     if not is_keep_empty:
-        tokens = filter(lambda token: len(token) > 0, tokens)
+        tokens = list(filter(lambda token: len(token) > 0, tokens))
     if is_unescape:
-        tokens = map(lambda token: _unescape(token), tokens)
+        tokens = list(map(lambda token: _unescape(token), tokens))
     return tokens
 
 
@@ -320,9 +320,9 @@ def read_tagged_file(path, comment_char='%', delimiter='\t'):
                             if not isinstance(val_type, type('')):
                                 to_convert = filter(lambda x: len(x) > 0, map(lambda con: con.strip(), to_convert))
                         elif not isinstance(val_type, type('')):
-                            to_convert = _unescape(header_val.strip())
+                            to_convert = [_unescape(header_val.strip())]
                         else:
-                            to_convert = _unescape(header_val)
+                            to_convert = [_unescape(header_val)]
 
                         config_key = scope_val
                         config_vals = list()
@@ -435,8 +435,8 @@ def read_tagged_file(path, comment_char='%', delimiter='\t'):
                     if column_type == 'spaceDelimTagged':
                         words_with_fields = current_columns[index_column].split()
                         tagged_words = list()
-                        required_fields = _get_or_default(column_name_to_required_fields, column_name)
-                        optional_fields = _get_or_default(column_name_to_optional_fields, column_name)
+                        required_fields = _get_or_default(column_name_to_required_fields, column_name, list())
+                        optional_fields = _get_or_default(column_name_to_optional_fields, column_name, list())
                         field_name_remap = _get_or_default(column_name_to_field_name_remap, column_name, dict())
                         field_value_remap = _get_or_default(column_name_to_field_value_remap, column_name, dict())
                         allowed_field_values = _get_or_default(

@@ -18,7 +18,7 @@ EventTypes = [Word_EventType, Question_EventType, Response_EventType]
 WordAndResponse = namedtuple('WordAndResponse', 'word_event response_event')
 QuestionEvents = namedtuple('QuestionEvents', 'question_event word_response_events')
 
-sudre_perceptual_features = [
+sudre_perceptual_features = (
     'Word length',
     'White pixel count',
     'Internal details',
@@ -30,9 +30,9 @@ sudre_perceptual_features = [
     'Prickiliness',
     'Line curviness',
     '3D curviness'
-]
+)
 
-__questions_in_id_order = [
+__questions_in_id_order = (
     'Is it manmade?',
     'Is it made of metal?',
     'Is it hollow?',
@@ -53,9 +53,9 @@ __questions_in_id_order = [
     'Is it alive?',
     'Does it have feelings?',
     'Can you pick it up?'
-]
+)
 
-__words_in_id_order = [
+__words_in_id_order = (
     'airplane',
     'ant',
     'apartment',
@@ -116,9 +116,9 @@ __words_in_id_order = [
     'truck',
     'watch',
     'window'
-]
+)
 
-words_20questions = list(__words_in_id_order)
+words_20questions = tuple(__words_in_id_order)
 num_20questions_words = len(__words_in_id_order)
 
 
