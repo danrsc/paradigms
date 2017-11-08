@@ -1,12 +1,183 @@
+import os
 import numpy
-from brain_gen import LabelEmbeddingManager
+import pickle
+from brain_gen import LabelIdManager, LabelEmbeddingManager, flags, Option, SingleItemSpec, log_directory
+from .stimulus import Stimulus
+from .master_stimuli import MasterStimuliPaths, create_master_stimuli
 
 
 __all__ = [
     'word2vec_key',
     'make_word2vec_label_manager',
     'make_label_manager_from_npz',
-    'LabelEmbeddingManagerNamedComponent']
+    'make_master_stimuli_label_manager',
+    'make_master_stimuli_fold_key_manager',
+    'LabelEmbeddingManagerNamedComponent',
+    'words_having_part_of_speech',
+    'first_non_to_be_verb',
+    'first_noun',
+    'stimulus_to_first_noun_text',
+    'stimulus_to_first_noun_time',
+    'stimulus_to_first_non_to_be_verb_text',
+    'stimulus_to_first_non_to_be_verb_time',
+    'stimulus_to_full_text',
+    'stimulus_to_last_word_time']
+
+
+def get_options():
+    return [
+        Option(
+            'word2vec_path',
+            'The path to the word2vec binary vector file',
+            is_required=False,
+            parse_spec=SingleItemSpec(parsed_type='path')),
+        Option(
+            'master_stimuli',
+            'The name of the master stimuli to use, for example \'passive_active_3\'',
+            is_required=False),
+        Option(
+            'map_stimulus_to_label_key',
+            'A function (module.function), which maps from a Stimulus instance to a key from which to make the label',
+            is_required=False,
+            parse_spec=SingleItemSpec(parsed_type='attribute')),
+        Option(
+            'map_stimulus_to_fold_key',
+            'A function (module.function), which maps from a Stimulus instance to a key for leave one out '
+            'cross-validation',
+            is_required=False,
+            parse_spec=SingleItemSpec(parsed_type='attribute')),
+        Option(
+            'map_stimulus_to_time_0',
+            'A function which returns a timepoint that should be considered time 0 for the stimulus. This '
+            'allows control over how the stimuli are aligned to each other',
+            parse_spec=SingleItemSpec(parsed_type='attribute'),
+            is_required=False),
+        Option(
+            'relative_session_stimuli_path_format',
+            'A format string using keywords which are properties of the recording tuple. When combined with the data '
+            'root and populated with recording tuple values, this should be the path to a matlab file containing '
+            'information about how the events correspond to stimuli within a subject\'s recording session',
+            is_required=False),
+        Option(
+            'label_embedding_type',
+            'If specified, this type of embedding will be used to represent the label. If None, then a one-hot '
+            'representation will be used for the label',
+            is_required=False),
+    ]
+
+
+noun_tags = {'NN', 'NNS', 'NNP', 'NNPS'}
+verb_tags = {'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ'}
+to_be_verbs = {'be', 'am', 'is', 'are', 'being', 'was', 'were', 'been'}
+
+
+def words_having_part_of_speech(stimulus, allowed_pos):
+    for word_stimulus in stimulus.iter_level(Stimulus.word_level):
+        if word_stimulus['POS'] in allowed_pos:
+            yield word_stimulus
+
+
+def first_non_to_be_verb(stimulus, is_raise=True):
+    for word_stimulus in words_having_part_of_speech(stimulus, verb_tags):
+        lower_text = word_stimulus.text.lower()
+        if lower_text not in to_be_verbs:
+            return word_stimulus
+    if is_raise:
+        raise ValueError('No non-to-be-verbs found in stimulus: {}'.format(stimulus))
+    return None
+
+
+def first_noun(stimulus, is_raise=True):
+    for word_stimulus in words_having_part_of_speech(stimulus, noun_tags):
+        return word_stimulus
+    if is_raise:
+        raise ValueError('No nouns found in stimulus: {}'.format(stimulus))
+    return None
+
+
+def stimulus_to_first_noun_text(stimulus):
+    return first_noun(stimulus).text.lower()
+
+
+def stimulus_to_first_noun_time(stimulus):
+    return first_noun(stimulus)[Stimulus.time_stamp_attribute_name]
+
+
+def stimulus_to_first_non_to_be_verb_text(stimulus):
+    return first_non_to_be_verb(stimulus).text.lower()
+
+
+def stimulus_to_first_non_to_be_verb_time(stimulus):
+    return first_non_to_be_verb(stimulus)[Stimulus.time_stamp_attribute_name]
+
+
+def stimulus_to_full_text(stimulus):
+    return stimulus.text.lower()
+
+
+def stimulus_to_last_word_time(stimulus):
+    result = None
+    for stimulus_word in stimulus.iter_level(Stimulus.word_level):
+        result = stimulus_word
+    return result[Stimulus.time_stamp_attribute_name]
+
+
+def master_stimuli_from_flags():
+    if flags().master_stimuli is None:
+        raise ValueError('master_stimuli option must be specified to use this label manager')
+    master_stimuli_path = getattr(MasterStimuliPaths, flags().master_stimuli, None)
+    if master_stimuli_path is None:
+        raise ValueError('Unknown master_stimuli: {}'.format(flags().master_stimuli))
+    master_stimuli_filename = os.path.split(master_stimuli_path)[1]
+    binary_filename = os.path.splitext(master_stimuli_filename)[0] + os.path.extsep + 'bin'
+    binary_file_path = os.path.join(log_directory(), binary_filename)
+
+    is_binary_current = (os.path.exists(binary_file_path) and
+                         abs(os.path.getmtime(master_stimuli_path) - os.path.getmtime(binary_file_path)) < .1)
+
+    if is_binary_current:
+        with open(binary_file_path, 'rb') as binary_file:
+            master_stimuli = pickle.load(binary_file)
+            return master_stimuli
+
+    master_stimuli, _, _ = create_master_stimuli(master_stimuli_path)
+
+    if not os.path.exists(log_directory()):
+        os.makedirs(log_directory())
+        with open(binary_file_path, 'wb') as binary_file:
+            pickle.dump(master_stimuli, binary_file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return master_stimuli
+
+
+def make_master_stimuli_label_manager():
+    master_stimuli = master_stimuli_from_flags()
+    map_to_key = flags().map_stimulus_to_label_key
+    if map_to_key is None:
+        raise ValueError('map_stimulus_to_label_key option must be specified to use this label manager')
+    keys = list(sorted(set([map_to_key(s) for s in master_stimuli])))
+    embedding_type = flags().label_embedding_type
+    if embedding_type is None:
+        return LabelIdManager(keys, map_to_key)
+    elif embedding_type == 'word2vec':
+        embedding_dict = {}
+        import gensim
+        word2vec = gensim.models.KeyedVectors.load_word2vec_format(flags().word2vec_path, binary=True)
+        for k in keys:
+            embedding_dict[k] = word2vec[k]
+        del word2vec
+        return LabelEmbeddingManager(embedding_dict, map_to_key)
+    else:
+        raise ValueError('Unknown embedding type: {}'.format(embedding_type))
+
+
+def make_master_stimuli_fold_key_manager():
+    map_to_fold = flags().map_stimulus_to_fold_key
+    if map_to_fold is None:
+        return None
+    master_stimuli = master_stimuli_from_flags()
+    fold_keys = list(sorted(set([map_to_fold(s) for s in master_stimuli])))
+    return LabelIdManager(fold_keys, map_to_fold)
 
 
 def word2vec_key(text):
@@ -85,8 +256,9 @@ def make_label_manager_from_npz(
 
 class LabelEmbeddingManagerNamedComponent(LabelEmbeddingManager):
 
-    def __init__(self, embedding_dict, component_names, map_to_key=None, sort_key=None):
-        LabelEmbeddingManager.__init__(self, embedding_dict, map_to_key=map_to_key, sort_key=sort_key)
+    def __init__(self, embedding_dict, component_names, map_to_key=None, sort_key=None, is_numpy_only=False):
+        LabelEmbeddingManager.__init__(self, embedding_dict, map_to_key=map_to_key, sort_key=sort_key,
+                                       is_numpy_only=is_numpy_only)
         self._component_names = component_names
 
     @property

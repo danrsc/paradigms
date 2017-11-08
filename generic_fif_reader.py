@@ -2,10 +2,14 @@ import itertools
 import string
 import mne
 import numpy
-from brain_gen.core import zip_equal
+from brain_gen.core import zip_equal, flags
 from .stimulus import Event, StimulusEvents, Stimulus
+from .master_stimuli import is_audio_experiment, map_recording_to_session_stimuli_path, \
+    MasterStimuliPaths, create_master_stimuli
 
-__all__ = ['split_events', 'match_time_series_to_master', 'load_fif_block_events', 'load_block_stimuli']
+
+__all__ = ['split_events', 'match_time_series_to_master', 'load_fif_block_events', 'load_block_stimuli',
+           'make_compute_lower_upper_bounds_from_master_stimuli']
 
 
 def split_events(
@@ -71,10 +75,17 @@ def split_events(
 
 
 def match_time_series_to_master(
+        experiment_name,
         stimuli_events,
         master_stimuli,
         is_first_block,
         normalize=None):
+
+    if is_audio_experiment(experiment_name):
+        return _match_time_series_to_master_for_audio(
+            experiment_name, stimuli_events, master_stimuli, is_first_block, normalize)
+
+    stimulus_delay_in_seconds = .037
 
     def __default_normalize(s):
         return s.strip(string.punctuation).lower() if s is not None else ''
@@ -105,17 +116,20 @@ def match_time_series_to_master(
             stimulus_count += 1
             stimulus_counts[normalized] = stimulus_count
             full_meta.append(match.copy_with_event_attributes(
-                stimulus_events, normalize, stimulus_count, word_counts))
+                stimulus_events, normalize, stimulus_count, word_counts, stimulus_delay_in_seconds))
 
     return full_meta
 
 
-def match_time_series_to_master_for_audio(
+def _match_time_series_to_master_for_audio(
+        experiment_name,
         stimuli_events,
         master_stimuli,
         word_duration,
         word_spacing_duration,
         normalize=None):
+
+    stimulus_delay_in_seconds = .024
 
     def __default_normalize(s):
         return s.strip(string.punctuation).lower() if s is not None else ''
@@ -157,12 +171,13 @@ def match_time_series_to_master_for_audio(
             stimulus_events.sub_stimuli[0] = inferred_events
 
             full_meta.append(match.copy_with_event_attributes(
-                stimulus_events, normalize, stimulus_count, word_counts))
+                stimulus_events, normalize, stimulus_count, word_counts, stimulus_delay_in_seconds))
 
     return full_meta
 
 
-def load_fif_block_events(fif_block_file, session_stimuli_mat, index_block, stimulus_event_filter=None):
+def load_fif_block_events(
+        fif_block_file, session_stimuli_mat, index_block, stimulus_event_filter=None, fif_event_filter=None):
 
     if isinstance(session_stimuli_mat, type('')):
         from scipy.io import loadmat
@@ -193,12 +208,18 @@ def load_fif_block_events(fif_block_file, session_stimuli_mat, index_block, stim
     stimuli_events = numpy.array([e for e, b in zip_equal(stimuli_events, is_included) if b])
 
     fif_events = mne.find_events(
-        fif_block_file, stim_channel='STI101', shortest_event=1, uint_cast=True, min_duration=.005)
+        fif_block_file, stim_channel='STI101', shortest_event=1, uint_cast=True, min_duration=.005, verbose=False)
 
     index_sample_column = 0
     index_event_id_column = 2
 
+    if fif_event_filter is not None:
+        indicator_fif_events = fif_event_filter(fif_events[:, index_event_id_column])
+        fif_events = fif_events[indicator_fif_events]
+
     if not numpy.array_equal(stimuli_events, fif_events[:, index_event_id_column]):
+        print(stimuli_events)
+        print(fif_events[:, index_event_id_column])
         raise ValueError('Events in fif_block_file do not match events in session_stimuli_mat')
 
     time_indices = fif_events[:, index_sample_column] - fif_block_file.first_samp
@@ -219,20 +240,41 @@ def load_fif_block_events(fif_block_file, session_stimuli_mat, index_block, stim
     return result_events, fif_block_file.times
 
 
-def load_block_stimuli(master_stimuli, configuration, fif_raw, session_stimuli_mat, index_block):
+def load_block_stimuli(master_stimuli, configuration, experiment_name, fif_raw, session_stimuli_mat, index_block):
 
-    block_events, times = load_fif_block_events(fif_raw, session_stimuli_mat, index_block)
+    if is_audio_experiment(experiment_name):
+        return _load_block_stimuli_for_audio(
+            master_stimuli, configuration, experiment_name, fif_raw, session_stimuli_mat, index_block)
 
-    stimuli_events = split_events(
+    instruction_trigger = configuration['instruction_trigger']
+
+    def stimuli_event_filter(stimuli_events):
+        return [e != 0 and e != instruction_trigger for e in stimuli_events]
+
+    def fif_event_filter(fif_events):
+        return fif_events != instruction_trigger
+
+    block_events, times = load_fif_block_events(
+        fif_raw, session_stimuli_mat, index_block,
+        stimulus_event_filter=stimuli_event_filter, fif_event_filter=fif_event_filter)
+
+    # stimuli_events_ = split_events(
+    #     block_events,
+    #     configuration['startStimulusTrigger'],
+    #     [configuration['startSentenceTrigger']],
+    #     configuration['endStimulusTriggers'])
+
+    stimuli_events_ = split_events(
         block_events,
-        configuration['startStimulusTrigger'],
-        [configuration['startSentenceTrigger']],
-        configuration['endStimulusTriggers'])
+        configuration['start_stimulus_trigger'],
+        [],  # [configuration['startSentenceTrigger']],
+        configuration['end_stimulus_triggers'])
 
-    return match_time_series_to_master(stimuli_events, master_stimuli, index_block == 0)
+    return match_time_series_to_master(experiment_name, stimuli_events_, master_stimuli, index_block == 0)
 
 
-def load_block_stimuli_for_audio(master_stimuli, configuration, fif_raw, session_stimuli_mat, index_block):
+def _load_block_stimuli_for_audio(
+        master_stimuli, configuration, experiment_name, fif_raw, session_stimuli_mat, index_block):
 
     instruction_trigger = configuration['instruction_trigger']
     question_trigger = configuration['question_trigger']
@@ -265,10 +307,34 @@ def load_block_stimuli_for_audio(master_stimuli, configuration, fif_raw, session
     block_events, times = load_fif_block_events(
         fif_raw, session_stimuli_mat, index_block, stimulus_event_filter=stimulus_event_filter)
 
-    stimuli_events = split_events(
+    stimuli_events_ = split_events(
         block_events,
-        configuration['start_stimulus_trigger'],
+        configuration['start_stimulus_trigger_audio'],
         [],  # [configuration['startSentenceTrigger']],
         configuration['end_stimulus_triggers'])
 
-    return match_time_series_to_master_for_audio(stimuli_events, master_stimuli, word_duration, word_spacing_duration)
+    return _match_time_series_to_master_for_audio(
+        experiment_name, stimuli_events_, master_stimuli, word_duration, word_spacing_duration)
+
+
+def make_compute_lower_upper_bounds_from_master_stimuli(recording_tuple):
+
+    def compute_lower_upper_bounds(mne_raw):
+        session_stimuli_path = map_recording_to_session_stimuli_path(recording_tuple)
+
+        master_stimuli_path = getattr(MasterStimuliPaths, flags().master_stimuli, None)
+        if master_stimuli_path is None:
+            raise ValueError('Unknown master stimuli: {}'.format(flags().master_stimuli))
+        master_stimuli, configuration, _ = create_master_stimuli(master_stimuli_path)
+
+        stimuli = load_block_stimuli(
+            master_stimuli, configuration, recording_tuple.experiment, mne_raw, session_stimuli_path,
+            int(recording_tuple.recording) - 1)
+
+        return [(
+            stimulus,
+            stimulus[Stimulus.time_stamp_attribute_name],
+            stimulus[Stimulus.time_stamp_attribute_name] + stimulus[Stimulus.duration_attribute_name]
+        ) for stimulus in stimuli]
+
+    return compute_lower_upper_bounds

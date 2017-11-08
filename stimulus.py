@@ -150,7 +150,8 @@ class Stimulus:
             child.__deep_copy(copy)
         return copy
 
-    def copy_with_event_attributes(self, stimulus_events, normalize, stimulus_count, word_counts):
+    def copy_with_event_attributes(
+            self, stimulus_events, normalize, stimulus_count, word_counts, stimulus_presentation_delay):
         if self.parent is not None:
             raise RuntimeError('Can only call copy_with_event_attributes on root stimulus node')
         root_copy = self.__deep_copy(None)
@@ -179,7 +180,7 @@ class Stimulus:
                                      'expected {0}, got {1}'.format(
                                          normalized_text, normalize(word_events[index_word].stimulus)))
                 word_stimulus.__attributes[Stimulus.time_stamp_attribute_name] = \
-                    word_events[index_word].time_stamp
+                    word_events[index_word].time_stamp + stimulus_presentation_delay
                 word_stimulus.__attributes[Stimulus.duration_attribute_name] = word_events[index_word].duration
 
         # now for levels higher than word, add in time information

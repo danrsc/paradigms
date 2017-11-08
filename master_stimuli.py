@@ -1,10 +1,12 @@
 import os
+import inspect
 from six import iteritems
+from brain_gen.core import flags
 from .stimulus import Stimulus
 from . import tagged_file_reader
 
 
-__all__ = ['create_master_stimuli']
+__all__ = ['create_master_stimuli', 'MasterStimuliPaths', 'map_recording_to_session_stimuli_path']
 
 
 def create_master_stimuli(master_stimuli_path):
@@ -98,3 +100,21 @@ def create_master_stimuli(master_stimuli_path):
             root_stimuli.append(Stimulus(root_level, root_attributes))
 
     return root_stimuli, configuration, master_stimuli_modify_time
+
+
+class MasterStimuliPaths:
+
+    base_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    passive_active_3 = os.path.join(base_path, 'passive_active_3.txt')
+
+    def __init__(self):
+        pass
+
+
+def is_audio_experiment(experiment_name):
+    return experiment_name.lower() == 'passact3aud'
+
+
+def map_recording_to_session_stimuli_path(recording_tuple):
+    file_name = flags().relative_session_stimuli_path_format.format(**recording_tuple)
+    return os.path.join(flags().data_root, file_name)
