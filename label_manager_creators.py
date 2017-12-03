@@ -1,4 +1,6 @@
 import os
+import string
+import re
 import numpy
 import pickle
 from brain_gen import LabelIdManager, LabelEmbeddingManager, flags, Option, SingleItemSpec, log_directory
@@ -69,6 +71,7 @@ def get_options():
 noun_tags = {'NN', 'NNS', 'NNP', 'NNPS'}
 verb_tags = {'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ'}
 to_be_verbs = {'be', 'am', 'is', 'are', 'being', 'was', 'were', 'been'}
+punctuation_regex = re.compile('[{}]'.format(re.escape(string.punctuation)))
 
 
 def words_having_part_of_speech(stimulus, allowed_pos):
@@ -96,7 +99,7 @@ def first_noun(stimulus, is_raise=True):
 
 
 def stimulus_to_first_noun_text(stimulus):
-    return first_noun(stimulus).text.lower()
+    return punctuation_regex.sub('', first_noun(stimulus).text).lower()
 
 
 def stimulus_to_first_noun_time(stimulus):
@@ -104,7 +107,7 @@ def stimulus_to_first_noun_time(stimulus):
 
 
 def stimulus_to_first_non_to_be_verb_text(stimulus):
-    return first_non_to_be_verb(stimulus).text.lower()
+    return punctuation_regex.sub('', first_non_to_be_verb(stimulus).text).lower()
 
 
 def stimulus_to_first_non_to_be_verb_time(stimulus):
