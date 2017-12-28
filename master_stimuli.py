@@ -106,6 +106,7 @@ class MasterStimuliPaths:
 
     base_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     passive_active_3 = os.path.join(base_path, 'passive_active_3.txt')
+    passive_active_2 = os.path.join(base_path, 'passive_active_2.txt')
 
     def __init__(self):
         pass

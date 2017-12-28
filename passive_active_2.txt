@@ -1,0 +1,124 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This file contains the stimulus data used to analyze the PassAct3 family of    %
+% experiments. It uses markup defined by a header, as indicated by the comments  %
+% below.                                                                         %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Comments are allowed at any point in the file.
+%
+% The first part of the file is a header which defines the markup.
+%
+% After the header, each line represents an item.  The columns become fields of that item.
+% Each column has a type, which can be numerical or a string, or a spaceDelimTagged type.
+%
+% If a column type is spaceDelimTagged, then the value in that column is first split on spaces.
+% Each sub-item within the column is placed into a list, and each has its own fields which are
+% determined by the header.  These fields are delimited by / (slash).
+%
+% Fields can be either named or unnamed.  Unnamed fields are required for every sub-item.
+% Named fields are optional.  '=' separates names from values for named tags.
+%
+% The columns entry in the header specifies what the column names and types are in the order of the columns.
+%
+% unnamed_field entries in the header are specified in the order in which they are expected.
+% The unnamed_field entry is <column_name>:<structure_field_name>=<field_type>[:allowed values]
+% column_name specifies which column the field belongs to.
+% structure_field_name is the name used on the structure into which this file is parsed.
+% field_type can be string or a numerical type
+% You can restrict a field to draw its values from a closed set in order to ensure no typos
+% occur in the this file.  In this case, follow the file_type by a ':' and a set of allowed values
+% allowed values is a set of allowed values separated by commas and enclosed in curly braces.
+% The closed set specifies the set of strings that are allowed in this file - it does not compare
+% integer types to each other for instance
+% Allowed values can also be converted from the file form if an -> is specified within the value
+% e.g. a field value could be 's->sentence'.  In that case, 's' is used as the value in this file, but
+% the parsed form will be 'sentence'.
+% This is useful if you want a short form in the file to be parsed into a longer form, for instance.
+%
+% named_field entries are similar to unnamed_field entries.  The order in which they are specified
+% is unimportant.  There are two differences from unnamed_field entries.
+% file_field_name specifies the name used to indicate that field in this file.  By default, this is
+% also used as the structure_field_name, but you can use the -> operator to use a different structure_field_name.
+% The other difference is that the entry must end with the default value for the field.  sub-items which do not
+% specify the named field will take the default value.
+% <column_name>:<file_field_name>[->structure_field_name]=<field_type>[:allowed values];default=<defaultVal>
+% sub-items which do not specify the named field will take the default value.
+%
+% It is possible to reference a different field's allowed values so that you don't need to create a
+% (possibly large) closed set of allowed values twice.  To reference a different field's allowed values set
+% the field_type to 'use_values_from' and specify which column field name combination to use separated by a '.'.
+% The column you are using the values from can be the same column as the current field but does not have to be.
+% For an unnamed_field entry this would like like:
+% myColumnName:myField=use_values_from:someOtherColumn.someOtherField
+%
+% Finally, in addition to specifying the format for the latter part of the file, the header can include
+% key value pairs that will be returned by the parser.  This can be used to add configuration that is
+% defined at the experiment level rather than the item level.  The keys are always strings, the values
+% can take numerical, boolean or string types.  To use a typed value, add an underscore with the type to
+% the keyval specifier.  For example, to use a bool:
+% keyval_bool:myBool=true
+%
+% The end of the header is indicated by a line with 5 stars: *****
+%
+%
+%
+%%%%%%%%%%%%%%%%%%%%
+% HEADER           %
+%%%%%%%%%%%%%%%%%%%%
+keyval_double:instruction_trigger=1
+keyval_double:start_stimulus_trigger=2
+keyval_double_list:end_stimulus_triggers=4
+keyval_double:question_trigger=4
+keyval_double_list:yes_no_triggers=254,255
+keyval_bool:allow_repeat_post_stimulus_triggers=True
+
+columns=stimulus:spaceDelimTagged,is_active:bool,question:spaceDelimTagged,is_yes_correct:bool,question_code:string
+stimulus:unnamed_field:word=string
+stimulus:unnamed_field:POS=string
+question:unnamed_field:word=string
+question:unnamed_field:POS=string
+%%%%%%%%%%%%%%%%%%%%
+***** % END HEADER %
+%%%%%%%%%%%%%%%%%%%%
+
+% Active Sentences
+The/DT man/NN watched/VBD the/DT girl./NN	T	Did/VBD he/PRP see/VB a/DT person?/NN	T	A_Qhe1Y
+The/DT girl/NN liked/VBD the/DT boy./NN	T	Did/VBD she/PRP hate/VB this/DT person?/NN	F	A_Qshe1N
+The/DT woman/NN despised/VBN the/DT man./NN	T	Was/VBD he/PRP likable?/JJ	F	A_Qhe2N
+The/DT boy/NN encouraged/VBD the/DT woman./NN	T	Did/VBD someone/NN talk/VB to/TO her?/PRP	T	A_Qshe2Y
+
+The/DT man/NN liked/VBD the/DT boy./NN	T	Were/VBD they/PRP alive?/JJ	T	A_QmtheyY
+The/DT girl/NN despised/VBN the/DT man./NN	T	Did/VBD she/PRP like/VB the/DT person?/NN	F	A_Qshe1N
+The/DT woman/NN encouraged/VBD the/DT girl./NN	T	Were/VBD they/PRP friendly?/JJ	T	A_QftheyY
+The/DT boy/NN watched/VBD the/DT woman./NN	T	Was/VBD he/PRP blind?/JJ	F	A_Qhe1N
+
+The/DT man/NN despised/VBN the/DT woman./NN	T	Did/VB he/PRP want/VBP to/TO be/VB friends?/NNS	F	A_Qhe1N
+The/DT girl/NN encouraged/VBD the/DT man./NN	T	Was/VBD she/PRP sleeping?/NN	T	A_Qshe1N
+The/DT woman/NN watched/VBD the/DT boy./NN	T	Was/VBD he/PRP visible?/JJ	T	A_Qhe2Y
+The/DT boy/NN liked/VBD the/DT girl./NN	T	Was/VBD she/PRP dead?/JJ	F	A_Qshe2N
+
+The/DT man/NN encouraged/VBD the/DT woman./NN	T	Was/VBD she/PRP complimented?/JJ	T	A_Qshe2Y
+The/DT girl/NN watched/VBD the/DT boy./NN	T	Was/VBD he/PRP gone?/VBN	F	A_Qhe2N
+The/DT woman/NN liked/VBD the/DT girl./NN	T	Did/VBD they/PRP know/VB each/DT other?/JJ	T	A_QftheyY
+The/DT boy/NN despised/VBN the/DT man./NN	T	Were/VBD there/EX negative/JJ feelings?/NNS	T	A_QmtheyY
+
+% Passive Sentences
+The/DT girl/NN was/VBD watched/VBD by/IN the/DT man./NN	F	Did/VBD he/PRP see/VB a/DT person?/NN	T	P_Qhe1Y
+The/DT boy/NN was/VBD liked/VBD by/IN the/DT girl./NN	F	Did/VBD she/PRP hate/VB this/DT person?/NN	F	P_Qshe1N
+The/DT man/NN was/VBD despised/VBN by/IN the/DT woman./NN	F	Was/VBD he/PRP likable?/JJ	F	P_Qhe2N
+The/DT woman/NN was/VBD encouraged/VBD by/IN the/DT boy./NN	F	Did/VBD someone/NN talk/VB to/TO her?/PRP	T	P_Qshe2Y
+
+The/DT boy/NN was/VBD liked/VBD by/IN the/DT man./NN	F	Were/VBD they/PRP alive?/JJ	T	P_Qmthey
+The/DT man/NN was/VBD despised/VBN by/IN the/DT girl./NN	F	Did/VBD she/PRP like/VB the/DT person?/NN	F	P_Qshe1N
+The/DT girl/NN was/VBD encouraged/VBD by/IN the/DT woman./NN	F	Were/VBD they/PRP friendly?/JJ	T	P_QftheyY
+The/DT woman/NN was/VBD watched/VBD by/IN the/DT boy./NN	F	Was/VBD he/PRP blind?/JJ	F	P_Qhe1N
+
+The/DT woman/NN was/VBD despised/VBN by/IN the/DT man./NN	F	Did/VB he/PRP want/VBP to/TO be/VB friends?/NNS	F	P_Qhe1N
+The/DT man/NN was/VBD encouraged/VBD by/IN the/DT girl./NN	F	Was/VBD she/PRP sleeping?/NN	F	P_Qshe1N
+The/DT boy/NN was/VBD watched/VBD by/IN the/DT woman./NN	F	Was/VBD he/PRP visible?/JJ	T	P_Qhe2Y
+The/DT girl/NN was/VBD liked/VBD by/IN the/DT boy./NN	F	Was/VBD she/PRP dead?/JJ	F	P_Qshe2N
+
+The/DT woman/NN was/VBD encouraged/VBD by/IN the/DT man./NN	F	Was/VBD she/PRP complemented?/JJ	T	P_Qshe2Y
+The/DT boy/NN was/VBD watched/VBD by/IN the/DT girl./NN	F	Was/VBD he/PRP gone?/VBN	F	P_Qhe2N
+The/DT girl/NN was/VBD liked/VBD by/IN the/DT woman./NN	F	Did/VBD they/PRP know/VB each/DT other?/JJ	T	P_QftheyY
+The/DT man/NN was/VBD despised/VBN by/IN the/DT boy./NN	F	Were/VBD there/EX negative/JJ feelings?/NNS	T	P_QmtheyY

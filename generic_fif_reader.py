@@ -16,7 +16,8 @@ def split_events(
         block_events,
         stimulus_onset_trigger,
         substimulus_onset_triggers,
-        start_post_stimulus_triggers):  # for example, start of question
+        start_post_stimulus_triggers, # for example, start of question
+        allow_repeat_post_stimulus_triggers=False):
 
     stimuli = list()
     sub_stimuli = None
@@ -51,15 +52,22 @@ def split_events(
             current_accumulator.append(meta)
         elif start_post_stimulus_triggers is not None and meta.trigger in start_post_stimulus_triggers:
             if is_post_stimulus:
-                raise ValueError('Did not expect multiple start-post-stimulus trigger '
-                                 'between start-post-stimulus trigger and stimulus onset trigger')
-            is_post_stimulus = True
-            if len(current_accumulator) > 0:
-                if sub_stimuli is None:
-                    sub_stimuli = list()
-                sub_stimuli.append(current_accumulator)
-                current_accumulator = list()
-            current_accumulator.append(meta)
+                if allow_repeat_post_stimulus_triggers:
+                    # in some experiments (e.g. PassAct2, the post stimulus trigger was also used as the word
+                    # trigger for every word in the question, so if the allow option is set, we just treat
+                    # these as normal word triggers
+                    current_accumulator.append(meta)
+                else:
+                    raise ValueError('Did not expect multiple start-post-stimulus trigger '
+                                     'between start-post-stimulus trigger and stimulus onset trigger')
+            else:
+                is_post_stimulus = True
+                if len(current_accumulator) > 0:
+                    if sub_stimuli is None:
+                        sub_stimuli = list()
+                    sub_stimuli.append(current_accumulator)
+                    current_accumulator = list()
+                current_accumulator.append(meta)
         else:
             current_accumulator.append(meta)
     if len(current_accumulator) > 0:
@@ -246,7 +254,10 @@ def load_block_stimuli(master_stimuli, configuration, experiment_name, fif_raw, 
         return _load_block_stimuli_for_audio(
             master_stimuli, configuration, experiment_name, fif_raw, session_stimuli_mat, index_block)
 
+    allow_repeat_post_stimulus_triggers = False
     instruction_trigger = configuration['instruction_trigger']
+    if 'allow_repeat_post_stimulus_triggers' in configuration:
+        allow_repeat_post_stimulus_triggers = configuration['allow_repeat_post_stimulus_triggers']
 
     def stimuli_event_filter(stimuli_events):
         return [e != 0 and e != instruction_trigger for e in stimuli_events]
@@ -268,7 +279,8 @@ def load_block_stimuli(master_stimuli, configuration, experiment_name, fif_raw, 
         block_events,
         configuration['start_stimulus_trigger'],
         [],  # [configuration['startSentenceTrigger']],
-        configuration['end_stimulus_triggers'])
+        configuration['end_stimulus_triggers'],
+        allow_repeat_post_stimulus_triggers)
 
     return match_time_series_to_master(experiment_name, stimuli_events_, master_stimuli, index_block == 0)
 
