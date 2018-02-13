@@ -11,6 +11,7 @@ from .master_stimuli import MasterStimuliPaths, create_master_stimuli
 __all__ = [
     'word2vec_key',
     'make_word2vec_label_manager',
+    'make_word_len_label_manager',
     'make_label_manager_from_npz',
     'make_master_stimuli_label_manager',
     'make_master_stimuli_fold_key_manager',
@@ -181,6 +182,13 @@ def make_master_stimuli_fold_key_manager():
     master_stimuli = master_stimuli_from_flags()
     fold_keys = list(sorted(set([map_to_fold(s) for s in master_stimuli])))
     return LabelIdManager(fold_keys, map_to_fold)
+
+
+def make_word_len_label_manager(stimuli):
+    embedding_dict = dict()
+    for stimulus in stimuli:
+        embedding_dict[stimulus.lower()] = numpy.full((1,), fill_value=len(stimulus))
+    return LabelEmbeddingManager(embedding_dict, map_to_key=lambda s: s.lower())
 
 
 def word2vec_key(text):
