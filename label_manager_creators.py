@@ -6,12 +6,15 @@ import pickle
 from brain_gen import LabelIdManager, LabelEmbeddingManager, flags, Option, SingleItemSpec, log_directory
 from .stimulus import Stimulus
 from .master_stimuli import MasterStimuliPaths, create_master_stimuli
+from .twenty_questions import words_20questions
 
 
 __all__ = [
     'word2vec_key',
     'make_word2vec_label_manager',
     'make_word_len_label_manager',
+    'make_word_len_numpy_label_manager_20questions',
+    'make_fold_key_manager_20questions',
     'make_label_manager_from_npz',
     'make_master_stimuli_label_manager',
     'make_master_stimuli_fold_key_manager',
@@ -184,11 +187,29 @@ def make_master_stimuli_fold_key_manager():
     return LabelIdManager(fold_keys, map_to_fold)
 
 
-def make_word_len_label_manager(stimuli):
+def make_fold_key_manager_20questions():
+    map_to_fold = flags().map_stimulus_to_fold_key
+    if map_to_fold is None:
+        return None
+    fold_keys = list(sorted(set([map_to_fold(s) for s in words_20questions])))
+    return LabelIdManager(fold_keys, map_to_fold)
+
+
+def make_word_len_numpy_label_manager_20questions():
+    def map_to_key(stimulus):
+        return stimulus.text.lower()
+    return make_word_len_label_manager(words_20questions, map_to_key=map_to_key, is_numpy_only=True)
+
+
+def make_word_len_label_manager(stimuli, map_to_key=None, is_numpy_only=False):
+    if map_to_key is None:
+        def lower_key(s):
+            return s.lower()
+        map_to_key = lower_key
     embedding_dict = dict()
     for stimulus in stimuli:
         embedding_dict[stimulus.lower()] = numpy.full((1,), fill_value=len(stimulus))
-    return LabelEmbeddingManager(embedding_dict, map_to_key=lambda s: s.lower())
+    return LabelEmbeddingManager(embedding_dict, map_to_key=map_to_key, is_numpy_only=is_numpy_only)
 
 
 def word2vec_key(text):

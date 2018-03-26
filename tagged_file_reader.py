@@ -317,9 +317,9 @@ def read_tagged_file(path, comment_char='%', delimiter='\t'):
 
                         if is_list_type:
                             to_convert = header_val.split(',')
-                            if not isinstance(val_type, type('')):
+                            if val_type is not str:
                                 to_convert = filter(lambda x: len(x) > 0, map(lambda con: con.strip(), to_convert))
-                        elif not isinstance(val_type, type('')):
+                        elif val_type is not str:
                             to_convert = [_unescape(header_val.strip())]
                         else:
                             to_convert = [_unescape(header_val)]
@@ -327,9 +327,9 @@ def read_tagged_file(path, comment_char='%', delimiter='\t'):
                         config_key = scope_val
                         config_vals = list()
                         for item in to_convert:
-                            if isinstance(val_type, type('')):
+                            if val_type is str:
                                 config_vals.append(item)
-                            elif isinstance(val_type, bool):
+                            elif val_type is bool:
                                 config_vals.append(_parse_bool(item))
                             else:
                                 config_vals.append(val_type(item))
@@ -487,9 +487,9 @@ def read_tagged_file(path, comment_char='%', delimiter='\t'):
                     else:
 
                         column_type = _map_type(column_type)
-                        if isinstance(column_type, bool):
+                        if column_type is bool:
                             item[column_name] = _parse_bool(current_columns[index_column].strip())
-                        elif isinstance(column_type, type('')):
+                        elif column_type is str:
                             item[column_name] = _unescape(current_columns[index_column])
                         else:
                             item[column_name] = column_type(current_columns[index_column].strip())

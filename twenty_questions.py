@@ -9,7 +9,7 @@ __all__ = ['Word_EventType', 'Question_EventType', 'Response_EventType', 'EventT
            'QuestionEvents', 'num_20questions_words', 'Event20Questions', 'WordGrouping', 'sort_key_20questions',
            'category_counts_20questions', 'create_stimuli_20questions', 'create_stimuli_60words',
            'read_events_20questions', 'read_events_60words', 'load_block_stimuli_20questions',
-           'load_block_stimuli_60words', 'sudre_perceptual_features']
+           'load_block_stimuli_60words', 'sudre_perceptual_features', 'make_compute_lower_upper_bounds_20questions']
 
 Word_EventType = 'word'
 Question_EventType = 'question'
@@ -464,7 +464,10 @@ def read_events_60words(
     if isinstance(mne_raw_obj, type('')):
         raw_obj = None
         try:
-            raw_obj = mne.io.Raw(mne_raw_obj, add_eeg_ref=False, verbose=verbose)
+            try:
+                raw_obj = mne.io.Raw(mne_raw_obj, add_eeg_ref=False, verbose=verbose)
+            except TypeError: # in new version of mne, add_eeg_ref is gone
+                raw_obj = mne.io.Raw(mne_raw_obj, verbose=verbose)
             return read_events_60words(
                 raw_obj, projector_delay_in_seconds=projector_delay_in_seconds, verbose=verbose)
         finally:
@@ -518,7 +521,10 @@ def read_events_20questions(
     if isinstance(mne_raw_obj, type('')):
         raw_obj = None
         try:
-            raw_obj = mne.io.Raw(mne_raw_obj, add_eeg_ref=False, verbose=verbose)
+            try:
+                raw_obj = mne.io.Raw(mne_raw_obj, add_eeg_ref=False, verbose=verbose)
+            except TypeError:  # in newer version of mne, add_eeg_ref is gone
+                raw_obj = mne.io.Raw(mne_raw_obj, verbose=verbose)
             return read_events_20questions(
                 raw_obj, projector_delay_in_seconds=projector_delay_in_seconds, verbose=verbose)
         finally:
@@ -651,3 +657,18 @@ def load_block_stimuli_20questions(mne_raw, verbose=None):
 
     block_events = read_events_20questions(mne_raw, verbose=verbose)
     return create_stimuli_20questions(block_events, mne_raw.times[-1])
+
+
+# noinspection PyUnusedLocal
+def make_compute_lower_upper_bounds_20questions(recording_tuple):
+
+    def compute_lower_upper_bounds(mne_raw):
+        stimuli = load_block_stimuli_20questions(mne_raw, verbose=False)
+
+        return [(
+            stimulus,
+            stimulus[Stimulus.time_stamp_attribute_name],
+            stimulus[Stimulus.time_stamp_attribute_name] + stimulus[Stimulus.duration_attribute_name]
+        ) for stimulus in stimuli]
+
+    return compute_lower_upper_bounds
