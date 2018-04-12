@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import itertools
 import string
 import mne
@@ -228,7 +232,8 @@ def load_fif_block_events(
     if not numpy.array_equal(stimuli_events, fif_events[:, index_event_id_column]):
         print(stimuli_events)
         print(fif_events[:, index_event_id_column])
-        raise ValueError('Events in fif_block_file do not match events in session_stimuli_mat')
+        raise ValueError('Events in fif_block_file {} do not match events in session_stimuli_mat'.format(
+            fif_block_file.info['filename']))
 
     time_indices = fif_events[:, index_sample_column] - fif_block_file.first_samp
     time_stamps = fif_block_file.times[time_indices]

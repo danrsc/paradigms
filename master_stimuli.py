@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import inspect
 from six import iteritems
@@ -6,7 +10,8 @@ from .stimulus import Stimulus
 from . import tagged_file_reader
 
 
-__all__ = ['create_master_stimuli', 'MasterStimuliPaths', 'map_recording_to_session_stimuli_path']
+__all__ = [
+    'create_master_stimuli', 'MasterStimuliPaths', 'map_recording_to_session_stimuli_path', 'is_audio_experiment']
 
 
 def create_master_stimuli(master_stimuli_path):
