@@ -41,6 +41,10 @@ class Event(object):
     def time_stamp(self):
         return self._time_stamp
 
+    def __str__(self):
+        return 'Event(stimulus={stimulus}, time_stamp={time_stamp}, duration={duration}, trigger={trigger})'.format(
+            stimulus=self.stimulus, time_stamp=self.time_stamp, duration=self.duration, trigger=self.trigger)
+
 
 class BlockEvents(object):
 
@@ -75,9 +79,11 @@ class Stimulus(object):
     word_level = 'word'
     presentation_level = 'presentation_response'
 
+    auditory_modality = 'auditory'
+    visual_modality = 'visual'
+
     text_attribute_name = 'text'
     part_of_speech_attribute_name = 'part_of_speech'
-    is_end_substimulus_attribute_name = 'is_end_substimulus'
     position_in_parent_attribute_name = 'position_in_parent'
     position_in_root_attribute_name = 'position_in_root'
     master_stimulus_index_attribute_name = 'master_stimulus_index'
@@ -85,9 +91,9 @@ class Stimulus(object):
     stratification_key_attribute_name = 'stratification_key'
     stimulus_count_presentation_attribute_name = 'stimulus_count_presentation'
     word_count_presentation_attribute_name = 'word_count_presentation'
-    post_stimulus_attribute_name = 'post_stimulus'
     time_stamp_attribute_name = 'time_stamp'
     duration_attribute_name = 'duration'
+    modality_attribute_name = 'modality'
     question_text_attribute_name = 'question_text'  # for 20 questions data
 
     def __init__(self, level, attributes, children, parent):
@@ -159,12 +165,16 @@ class Stimulus(object):
             self,
             primary_stimulus_events,
             primary_stimulus_presentation_delay,
+            primary_attributes_to_set,
+            primary_attributes_to_remove,
             stimulus_count,
             normalize,
             word_counts,
             additional_matches,
             additional_stimulus_events,
-            additional_stimulus_presentation_delays):
+            additional_stimulus_presentation_delays,
+            additional_stimulus_attributes_to_set,
+            additional_stimulus_attributes_to_remove):
 
         if self.parent is not None:
             raise RuntimeError('Can only call copy_with_event_attributes on root stimulus node')
@@ -200,9 +210,10 @@ class Stimulus(object):
         root_copy._attributes[Stimulus.stimulus_count_presentation_attribute_name] = stimulus_count
 
         if match_keys is not None:
-            for match_key, match, events, delay in zip_equal(
+            for match_key, match, events, delay, to_remove, to_set in zip_equal(
                     match_keys, additional_matches, additional_stimulus_events,
-                    additional_stimulus_presentation_delays):
+                    additional_stimulus_presentation_delays, additional_stimulus_attributes_to_remove,
+                    additional_stimulus_attributes_to_set):
                 if isinstance(match, tuple):
                     # this is a Stimulus not currently in our attributes
                     stimulus = match[1].copy()
@@ -210,6 +221,13 @@ class Stimulus(object):
                     root_copy._attributes[match_key] = stimulus
                 else:
                     _set_times(root_copy._attributes[match_key], events, delay)
+                if to_remove is not None:
+                    for attr in to_remove:
+                        # noinspection PyProtectedMember
+                        del root_copy._attributes[match_key]._attributes[attr]
+                if to_set is not None:
+                    # noinspection PyProtectedMember
+                    root_copy._attributes[match_key]._attributes.update(to_set)
 
         _set_times(root_copy, primary_stimulus_events, primary_stimulus_presentation_delay)
 
@@ -220,13 +238,20 @@ class Stimulus(object):
             word_counts[normalized_text] = word_count
             word_stimulus._attributes[Stimulus.word_count_presentation_attribute_name] = word_count
 
+        if primary_attributes_to_remove is not None:
+            for attribute_name in primary_attributes_to_remove:
+                del root_copy._attributes[attribute_name]
+
+        if primary_attributes_to_set is not None:
+            root_copy._attributes.update(primary_attributes_to_set)
+
         return root_copy
 
     def _propagate_time(self):
         if self.children is not None and len(self.children) > 0:
             for child in self.children:
                 # noinspection PyProtectedMember
-                child._propogate_time()
+                child._propagate_time()
 
             start_time = self.children[0][Stimulus.time_stamp_attribute_name] \
                 if Stimulus.time_stamp_attribute_name in self.children[0] else None

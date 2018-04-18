@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import numpy
 import mne
+from six.moves import zip_longest
 
 from brain_gen.core import flags, zip_equal
 from .stimulus import Stimulus, Event
@@ -14,6 +15,7 @@ __all__ = [
     'EventGroupSpec',
     'group_events',
     'GenericParadigm',
+    'EventLoadFixInfo',
     'make_map_to_stimulus_fn',
     'map_recording_to_session_stimuli_path',
     'load_session_stimuli_block_events',
@@ -21,9 +23,22 @@ __all__ = [
 
 
 class EventGroupSpec(object):
-
     def __init__(self, start_triggers, key, allow_repeated=False):
-        if numpy.isscalar(start_triggers):
+        """
+        An instance of this class is used as a parameter to group_events. This specification describes
+        What kind of group is indicated by the triggers in start_triggers so higher level grouping can be done
+        easily
+        Args:
+            start_triggers: One or more integers. The triggers in the fif events that indicate the start of this
+                kind of group
+            key: A key for this kind of group. For example 'stimulus', 'question', or 'sentence'
+            allow_repeated: Some paradigms (PassAct2) repeat the start of group trigger for every event in the group
+                for some kinds of groups (for questions). If this boolean is set, the repeated triggers will be
+                grouped into a single group
+        """
+        if start_triggers is None:
+            self._start_triggers = set()
+        elif numpy.isscalar(start_triggers):
             self._start_triggers = {start_triggers}
         else:
             self._start_triggers = set(start_triggers)
@@ -42,13 +57,28 @@ class EventGroupSpec(object):
         return self._allow_repeated
 
 
-def group_events(event_group_specs, block_events):
+def group_events(event_group_specs, event_stream, trigger_key_fn=None):
+    """
+    Groups together the events in event_stream, yielding a (key, events) pair for each group. The order of the
+    events is unchanged by this operation
+    Args:
+        event_group_specs: An iterable of EventGroupSpec instances defining how to group events together
+        event_stream: A stream of events to group
+        trigger_key_fn: a function which returns a trigger given an event. For the purpose of grouping, the
+            returned valued overrides the trigger on the event. The event's trigger is not modified
+    Returns:
+        An iterable of (key, events) pairs with one pair for each group in the stream
+    """
     current_events = list()
     current_key = None
     allow_repeat_trigger = None
-    for event in block_events:
+    for event in event_stream:
 
-        if event.trigger == allow_repeat_trigger:
+        trigger_key = event.trigger
+        if trigger_key_fn is not None:
+            trigger_key = trigger_key_fn(event)
+
+        if trigger_key == allow_repeat_trigger:
             assert(len(current_events) > 0)
             current_events.append(event)
             continue
@@ -62,10 +92,10 @@ def group_events(event_group_specs, block_events):
 
         matched_key = None
         for spec in event_group_specs:
-            if spec.is_match(event.trigger):
+            if spec.is_match(trigger_key):
                 matched_key = spec.key
                 if spec.allow_repeated:
-                    allow_repeat_trigger = event.trigger
+                    allow_repeat_trigger = trigger_key
                 break
         if matched_key is not None:
             if len(current_events) > 0:
@@ -91,12 +121,14 @@ class GenericParadigm(object):
             event_group_specs,
             primary_stimulus_key,
             normalize,
+            trigger_key_fn=None,
             visual_stimulus_delay_in_seconds=.037,
             auditory_stimulus_delay_in_seconds=.024):
         self._instruction_trigger = instruction_trigger
         self._event_group_specs = event_group_specs
         self._primary_stimulus_key = primary_stimulus_key
         self._normalize = normalize
+        self._trigger_key_fn = trigger_key_fn
         self._visual_stimulus_delay_in_seconds = visual_stimulus_delay_in_seconds
         self._auditory_stimulus_delay_in_seconds = auditory_stimulus_delay_in_seconds
 
@@ -126,7 +158,7 @@ class GenericParadigm(object):
 
     def iterate_stimulus_events(self, event_stream):
         stimulus_accumulator = list()
-        for key, events in group_events(self._event_group_specs, event_stream):
+        for key, events in group_events(self._event_group_specs, event_stream, self._trigger_key_fn):
             if len(stimulus_accumulator) == 0 and key != self._primary_stimulus_key:
                 raise ValueError('Unable to start stimulus')
             if key == self._primary_stimulus_key:
@@ -139,12 +171,39 @@ class GenericParadigm(object):
             yield stimulus_accumulator
 
     def load_block_stimuli(self, fif_raw, session_stimuli_mat, index_block):
-        block_events, _ = load_fif_block_events(
+        block_events, event_load_fix_info = load_fif_block_events(
             fif_raw, session_stimuli_mat, index_block, self._instruction_trigger)
-        return self.match(block_events)
+        return self.match(block_events), event_load_fix_info
+
+    def flatten(self, stimuli, single_auditory_events=True):
+        """
+        A pseudo-inverse of match which returns a stream of Event instances. Mostly useful for validating that the
+        input event_stream is faithfully represented by the stimuli
+        Args:
+            stimuli: The stream of stimuli to flatten
+            single_auditory_events: If True, then a single Event will be produced for an auditory event to mirror
+                the structure of the event_stream that match gets as an input. If False, the inferred events for
+                each word of the auditory input are produced
+        Returns:
+            A stream of Event instances
+        """
+        raise NotImplementedError('{} does not implement flatten'.format(type(self)))
+
+    # noinspection PyMethodMayBeStatic
+    def _get_master_remove_attributes(self, master, stimulus_events):
+        keys = set([k for k, v in stimulus_events])
+        return [k for k in master if isinstance(master[k], Stimulus) and k not in keys]
 
     def match(self, event_stream):
-
+        """
+        Converts a low level event stream (i.e. Event instances extracted from a fif file/session stimuli combination)
+        to a high level stimulus stream where each Stimulus has attributes and children which can themselves be Stimulus
+        instances. This function also handles the
+        Args:
+            event_stream: The stream of Event instances to convert
+        Returns:
+            A stream of Stimulus instances
+        """
         stimulus_counts = dict()
         word_counts = dict()
 
@@ -154,16 +213,37 @@ class GenericParadigm(object):
             masters = list()
             delays = list()
             final_events = list()
+            simple_attribute_adds = list()
+            simple_attribute_deletes = list()
             for key, events in stimulus_events:
+
+                # this is a useful place to print stuff for debugging
+                # print(key, [(ev.trigger, ev.stimulus) for ev in events])
+
                 if key == self._primary_stimulus_key:
-                    master = self._map_primary_events(key, events)
+                    master, adds, deletes = self._map_primary_events(key, events)
                     masters.append(master)
+                    if adds is None:
+                        adds = dict()
+                    if deletes is None:
+                        deletes = set()
+                    deletes.update(self._get_master_remove_attributes(master, stimulus_events))
+                    simple_attribute_adds.append(adds)
+                    simple_attribute_deletes.append(deletes)
                     stimulus_count = stimulus_counts[master] if master in stimulus_counts else 0
                     stimulus_count += 1
                     stimulus_counts[master] = stimulus_count
                 else:
                     assert(master is not None)
-                    masters.append(self._map_additional_events(master, key, events))
+                    additional_master, additional_master_adds, additional_master_deletes = \
+                        self._map_additional_events(master, key, events)
+                    masters.append(additional_master)
+                    if additional_master_adds is None:
+                        additional_master_adds = dict()
+                    if additional_master_deletes is None:
+                        additional_master_deletes = set()
+                    simple_attribute_adds.append(additional_master_adds)
+                    simple_attribute_deletes.append(additional_master_deletes)
 
                 stimulus_delay = self.visual_stimulus_delay_in_seconds
 
@@ -175,8 +255,13 @@ class GenericParadigm(object):
                     m = masters[-1]
                     if isinstance(m, tuple):
                         m = m[1]
-                    events = self._infer_auditory_events(m, key, events)
+                    events = self._infer_auditory_events(m, key, events[0])
                     stimulus_delay = self.auditory_stimulus_delay_in_seconds
+                    if Stimulus.modality_attribute_name not in simple_attribute_adds[-1]:
+                        simple_attribute_adds[-1][Stimulus.modality_attribute_name] = Stimulus.auditory_modality
+                else:
+                    if Stimulus.modality_attribute_name not in simple_attribute_adds[-1]:
+                        simple_attribute_adds[-1][Stimulus.modality_attribute_name] = Stimulus.visual_modality
 
                 delays.append(stimulus_delay)
                 final_events.append(events)
@@ -184,12 +269,16 @@ class GenericParadigm(object):
             stimulus = masters[0].copy_with_event_attributes(
                 final_events[0],
                 delays[0],
+                simple_attribute_adds[0],
+                simple_attribute_deletes[0],
                 stimulus_counts[masters[0]],
                 self.normalize,
                 word_counts,
                 masters[1:],
                 final_events[1:],
-                delays[1:])
+                delays[1:],
+                simple_attribute_adds[1:],
+                simple_attribute_deletes[1:])
             stimuli.append(stimulus)
 
         return stimuli
@@ -198,7 +287,8 @@ class GenericParadigm(object):
 
         def compute_lower_upper_bounds(mne_raw):
             session_stimuli_path = map_recording_to_session_stimuli_path(recording_tuple)
-            stimuli = self.load_block_stimuli(mne_raw, session_stimuli_path, int(recording_tuple.recording) - 1)
+            stimuli, event_load_fix_info = self.load_block_stimuli(
+                mne_raw, session_stimuli_path, int(recording_tuple.recording) - 1)
 
             return [(
                 stimulus,
@@ -268,25 +358,94 @@ def load_session_stimuli_block_events(session_stimuli_mat, index_block):
     return zip_equal(stimuli_events, block_text)
 
 
+class EventLoadFixInfo:
+
+    def __init__(self, num_removed, is_first_removed, is_session_removed):
+        self._num_removed = num_removed
+        self._is_first_removed = is_first_removed
+        self._is_session_removed = is_session_removed
+
+    @property
+    def num_removed(self):
+        return self._num_removed
+
+    @property
+    def is_first_removed(self):
+        return self._is_first_removed
+
+    @property
+    def is_session_removed(self):
+        return self._is_session_removed
+
+
 def load_fif_block_events(mne_raw, session_stimuli_mat, index_block, instruction_trigger):
 
     event_code_text_pairs = load_session_stimuli_block_events(session_stimuli_mat, index_block)
     # filter out the 0 event codes
-    event_code_text_pairs = [(c, t) for c, t in event_code_text_pairs if c != 0]
+    event_code_text_pairs = [(c, t) for c, t in event_code_text_pairs if c != 0 and c != instruction_trigger]
 
     index_sample_column = 0
+    index_prev_id_column = 1
     index_event_id_column = 2
 
-    fif_events = mne.find_events(
-        mne_raw, stim_channel='STI101', shortest_event=1, uint_cast=True, min_duration=0, verbose=False)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=DeprecationWarning)
+        fif_events = mne.find_events(
+            mne_raw, stim_channel='STI101', shortest_event=1, uint_cast=True, min_duration=0.000, verbose=False)
+
     # filter out the instructions
     fif_events = fif_events[fif_events[:, index_event_id_column] != instruction_trigger]
 
-    # validate the matching
+    # hack: filter out events where the middle column of the next event is not 0
+    # this column indicates the value of the channel just before the current event. In our paradigms, this should
+    # always be a 0. When it is not 0, the previous event is probably bogus
+    # In practice this seems to solve event finding problems
+    indices_non_zero = numpy.where(fif_events[:, index_prev_id_column] != 0)[0]
+    if len(indices_non_zero) > 0:
+        indices_bogus_events = indices_non_zero - 1
+        indicator_real_events = numpy.full(fif_events.shape[0], True)
+        indicator_real_events[indices_bogus_events] = False
+        fif_events = fif_events[indicator_real_events]
+
+    event_load_fix_info = None
     if len(event_code_text_pairs) != fif_events.shape[0]:
-        raise ValueError(
-            'Number of events in session_stimuli_mat ({}) is not equal to the number of fif_events ({}). '
-            'File: {}'.format(len(event_code_text_pairs), fif_events.shape[0], mne_raw.info['filename']))
+        fif_codes = fif_events[:, index_event_id_column]
+        session_codes = numpy.array([c for c, t in event_code_text_pairs])
+
+        which_part = None
+        if fif_codes.shape[0] > session_codes.shape[0]:
+            which_side = 'fif'
+            diff = fif_codes.shape[0] - session_codes.shape[0]
+            if numpy.array_equal(fif_codes[diff:], session_codes):
+                which_part = 'first'
+                fif_events = fif_events[diff:]
+            elif numpy.array_equal(fif_codes[:-diff], session_codes):
+                which_part = 'last'
+                fif_events = fif_events[:-diff]
+        else:
+            which_side = 'session'
+            diff = session_codes.shape[0] - fif_codes.shape[0]
+            if numpy.array_equal(fif_codes, session_codes[diff:]):
+                which_part = 'first'
+                event_code_text_pairs = event_code_text_pairs[diff:]
+            elif numpy.array_equal(fif_codes, session_codes[:-diff]):
+                which_part = 'last'
+                event_code_text_pairs = event_code_text_pairs[:-diff]
+
+        if len(event_code_text_pairs) != fif_events.shape[0]:
+            for f, e in zip_longest(fif_events, event_code_text_pairs):
+                print(f, e)
+            raise ValueError(
+                'Number of events in session_stimuli_mat ({}) is not equal to the number of fif_events ({}). '
+                'File: {}'.format(
+                    len(event_code_text_pairs),
+                    fif_events.shape[0],
+                    mne_raw.info['filename'] if 'filename' in mne_raw.info else 'unknown'))
+        else:
+            event_load_fix_info = EventLoadFixInfo(diff, which_part == 'first', which_side == 'session')
+            print('Warning: mismatched events between fif file and session stimuli file. '
+                  'Fixed by removing the {} {} events from the {} events.'.format(which_part, diff, which_side))
 
     time_indices = fif_events[:, index_sample_column] - mne_raw.first_samp
     time_stamps = mne_raw.times[time_indices]
@@ -296,11 +455,15 @@ def load_fif_block_events(mne_raw, session_stimuli_mat, index_block, instruction
     for index, ((session_code, session_text), fif_event, time_stamp, duration) in enumerate(
             zip(event_code_text_pairs, fif_events, time_stamps, durations)):
         if session_code != fif_event[index_event_id_column]:
+            for f, e in zip_longest(fif_events, event_code_text_pairs):
+                print(f, e)
+
             raise ValueError('Mismatch in event codes at index {}. Session event: {}, fif event: {}. File: {}'.format(
-                index, session_code, fif_event[index_event_id_column], mne_raw.info['filename']))
+                index, session_code, fif_event[index_event_id_column],
+                mne_raw.info['filename'] if 'filename' in mne_raw.info else 'unknown'))
 
         # some mild clean up of the punctuation is done here to match what was done in preprocessed files
-        clean_text = session_text[index].strip().replace(u'\u2019', "'").replace(u'\u201c', '"').replace(u'\u201d', '"')
+        clean_text = session_text.strip().replace(u'\u2019', "'").replace(u'\u201c', '"').replace(u'\u201d', '"')
 
         result.append(Event(
             stimulus=clean_text,
@@ -309,4 +472,4 @@ def load_fif_block_events(mne_raw, session_stimuli_mat, index_block, instruction
             time_stamp=time_stamp
         ))
 
-    return result
+    return result, event_load_fix_info

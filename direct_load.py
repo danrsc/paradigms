@@ -156,22 +156,22 @@ class DirectLoad:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
                 stimuli = load_block_stimuli_20questions(mne_raw)
-            return mne_raw, stimuli, False
+            return mne_raw, stimuli, None
         if experiment == '60words':
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
                 stimuli = load_block_stimuli_60words(mne_raw)
-            return mne_raw, stimuli, False
+            return mne_raw, stimuli, None
 
         paradigm = MasterStimuli.paradigm_from_experiment(experiment)
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            stimuli = paradigm.load_block_stimuli(
+            stimuli, event_load_fix_info = paradigm.load_block_stimuli(
                 mne_raw,
                 self.session_stimuli_path_format.format(subject=subject, experiment=experiment, block=block),
                 int(block) - 1)
-        return mne_raw, stimuli
+        return mne_raw, stimuli, event_load_fix_info
 
     def load_structural(self, experiment, subject, structural, structural_label_regex=None):
         import warnings

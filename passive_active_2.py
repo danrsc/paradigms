@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import string
 
-from .stimulus import Stimulus, StimulusBuilder, add_word_stimuli_to_parent, make_root_stimulus_builder
+from .stimulus import Stimulus, StimulusBuilder, add_word_stimuli_to_parent, make_root_stimulus_builder, Event
 from .generic_paradigm import GenericParadigm, make_map_to_stimulus_fn, EventGroupSpec
 
 
@@ -152,16 +152,55 @@ class PassAct2(GenericParadigm):
         raise RuntimeError('This function should never be called on {}'.format(type(self)))
 
     def _map_primary_events(self, key, events):
-        return self._map_primary(events)
+        return self._map_primary(events), None, None
 
     def _map_additional_events(self, master_stimulus, key, events):
         if key == 'prompt':
             if len(events) != 1:
                 raise ValueError('Expected exactly 1 prompt event')
-            return (
+            prompt_result = (
                 key,
                 StimulusBuilder(
                     Stimulus.word_level, attributes={Stimulus.text_attribute_name: events[0].stimulus}).make_stimulus())
+            return prompt_result, None, None
         if key not in master_stimulus:
             raise ValueError('Unable to find attribute in master stimulus: {}'.format(key))
-        return master_stimulus[key]
+        return master_stimulus[key], None, None
+
+    def flatten(self, stimuli, single_auditory_events=True):
+        for stimulus in stimuli:
+            if single_auditory_events and stimulus[Stimulus.modality_attribute_name] == Stimulus.auditory_modality:
+                yield Event(
+                    stimulus=stimulus[Stimulus.text_attribute_name],
+                    duration=stimulus[Stimulus.duration_attribute_name],
+                    time_stamp=stimulus[Stimulus.time_stamp_attribute_name],
+                    trigger=None)
+            else:
+                for word_stimulus in stimulus.iter_level(Stimulus.word_level):
+                    yield Event(
+                        stimulus=word_stimulus[Stimulus.text_attribute_name],
+                        duration=word_stimulus[Stimulus.duration_attribute_name],
+                        time_stamp=word_stimulus[Stimulus.time_stamp_attribute_name],
+                        trigger=None)
+            if 'question' in stimulus:
+                question_stimulus = stimulus['question']
+                if single_auditory_events and stimulus[Stimulus.modality_attribute_name] == Stimulus.auditory_modality:
+                    yield Event(
+                        stimulus=question_stimulus[Stimulus.text_attribute_name],
+                        duration=question_stimulus[Stimulus.duration_attribute_name],
+                        time_stamp=question_stimulus[Stimulus.time_stamp_attribute_name],
+                        trigger=None)
+                else:
+                    for word_stimulus in question_stimulus.iter_level(Stimulus.word_level):
+                        yield Event(
+                            stimulus=word_stimulus[Stimulus.text_attribute_name],
+                            duration=word_stimulus[Stimulus.duration_attribute_name],
+                            time_stamp=word_stimulus[Stimulus.time_stamp_attribute_name],
+                            trigger=None)
+            if 'prompt' in stimulus:
+                prompt_stimulus = stimulus['prompt']
+                yield Event(
+                    stimulus=prompt_stimulus[Stimulus.text_attribute_name],
+                    duration=prompt_stimulus[Stimulus.duration_attribute_name],
+                    time_stamp=prompt_stimulus[Stimulus.time_stamp_attribute_name],
+                    trigger=None)

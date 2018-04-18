@@ -94,7 +94,13 @@ _pass_act_3_stimuli = None
 
 class _PassAct3Base(GenericParadigm):
 
-    def __init__(self, stimulus_triggers, question_triggers, prompt_triggers):
+    def __init__(
+            self,
+            stimulus_triggers,
+            question_mark_triggers,
+            question_triggers,
+            prompt_triggers,
+            trigger_key_fn=None):
 
         global _pass_act_3_stimuli
         if _pass_act_3_stimuli is None:
@@ -110,10 +116,12 @@ class _PassAct3Base(GenericParadigm):
             instruction_trigger=1,
             event_group_specs=[
                 EventGroupSpec(stimulus_triggers, 'stimulus'),
+                EventGroupSpec(question_mark_triggers, 'question_mark'),
                 EventGroupSpec(question_triggers, 'question'),
                 EventGroupSpec(prompt_triggers, 'prompt')],
             primary_stimulus_key='stimulus',
-            normalize=_normalize)
+            normalize=_normalize,
+            trigger_key_fn=trigger_key_fn)
 
     @property
     def master_stimuli(self):
@@ -130,30 +138,79 @@ class _PassAct3Base(GenericParadigm):
         inferred_events = list()
         for index_word, word_stimulus in enumerate(master_stimulus.iter_level(Stimulus.word_level)):
             inferred_events.append(
-                Event(word_stimulus.text, word_duration + word_spacing_duration, auditory_event.trigger,
-                      auditory_event.time_stamp + index_word * (word_duration + word_spacing_duration)))
+                Event(stimulus=word_stimulus.text,
+                      duration=word_duration + word_spacing_duration,
+                      trigger=auditory_event.trigger if index_word == 0 else 2,
+                      time_stamp=auditory_event.time_stamp + index_word * (word_duration + word_spacing_duration)))
         return inferred_events
 
     def _map_primary_events(self, key, events):
-        return self._map_primary(events)
+        return self._map_primary(events), None, None
 
     def _map_additional_events(self, master_stimulus, key, events):
-        if key == 'prompt':
+        if key == 'prompt' or key == 'question_mark':
             if len(events) != 1:
                 raise ValueError('Expected exactly 1 prompt event')
-            return (
+            prompt_result = (
                 key,
                 StimulusBuilder(
                     Stimulus.word_level, attributes={Stimulus.text_attribute_name: events[0].stimulus}).make_stimulus())
+            return prompt_result, None, None
         if key not in master_stimulus:
             raise ValueError('Unable to find attribute in master stimulus: {}'.format(key))
-        return master_stimulus[key]
+        return master_stimulus[key], None, None
+
+    def flatten(self, stimuli, single_auditory_events=True):
+        for stimulus in stimuli:
+            if single_auditory_events and stimulus[Stimulus.modality_attribute_name] == Stimulus.auditory_modality:
+                yield Event(
+                    stimulus=stimulus[Stimulus.text_attribute_name],
+                    duration=stimulus[Stimulus.duration_attribute_name],
+                    time_stamp=stimulus[Stimulus.time_stamp_attribute_name],
+                    trigger=None)
+            else:
+                for word_stimulus in stimulus.iter_level(Stimulus.word_level):
+                    yield Event(
+                        stimulus=word_stimulus[Stimulus.text_attribute_name],
+                        duration=word_stimulus[Stimulus.duration_attribute_name],
+                        time_stamp=word_stimulus[Stimulus.time_stamp_attribute_name],
+                        trigger=None)
+            if 'question_mark' in stimulus:
+                question_mark_stimulus = stimulus['question_mark']
+                yield Event(
+                    stimulus=question_mark_stimulus[Stimulus.text_attribute_name],
+                    duration=question_mark_stimulus[Stimulus.duration_attribute_name],
+                    time_stamp=question_mark_stimulus[Stimulus.time_stamp_attribute_name],
+                    trigger=None)
+            if 'question' in stimulus:
+                question_stimulus = stimulus['question']
+                if single_auditory_events and stimulus[Stimulus.modality_attribute_name] == Stimulus.auditory_modality:
+                    yield Event(
+                        stimulus=question_stimulus[Stimulus.text_attribute_name],
+                        duration=question_stimulus[Stimulus.duration_attribute_name],
+                        time_stamp=question_stimulus[Stimulus.time_stamp_attribute_name],
+                        trigger=None)
+                else:
+                    for word_stimulus in question_stimulus.iter_level(Stimulus.word_level):
+                        yield Event(
+                            stimulus=word_stimulus[Stimulus.text_attribute_name],
+                            duration=word_stimulus[Stimulus.duration_attribute_name],
+                            time_stamp=word_stimulus[Stimulus.time_stamp_attribute_name],
+                            trigger=None)
+            if 'prompt' in stimulus:
+                prompt_stimulus = stimulus['prompt']
+                yield Event(
+                    stimulus=prompt_stimulus[Stimulus.text_attribute_name],
+                    duration=prompt_stimulus[Stimulus.duration_attribute_name],
+                    time_stamp=prompt_stimulus[Stimulus.time_stamp_attribute_name],
+                    trigger=None)
 
 
 class PassAct3(_PassAct3Base):
 
     def __init__(self):
-        super(PassAct3, self).__init__(stimulus_triggers=3, question_triggers=4, prompt_triggers=[254, 255])
+        super(PassAct3, self).__init__(
+            stimulus_triggers=3, question_mark_triggers=None, question_triggers=4, prompt_triggers=[254, 255])
 
     def _infer_auditory_events(self, master_stimulus, key, auditory_event):
         raise RuntimeError('This function should never be called on {}'.format(type(self)))
@@ -165,17 +222,68 @@ class PassAct3(_PassAct3Base):
 class PassAct3Aud(_PassAct3Base):
 
     def __init__(self):
-        super(PassAct3Aud, self).__init__(stimulus_triggers=5, question_triggers=4, prompt_triggers=[254, 255])
+
+        def _trigger_key_fn(event):
+            if event.stimulus == '?':
+                return event.trigger + 100
+            return event.trigger
+
+        super(PassAct3Aud, self).__init__(
+            stimulus_triggers=5, question_mark_triggers=104, question_triggers=4, prompt_triggers=[254, 255],
+            trigger_key_fn=_trigger_key_fn)
+
+    def iterate_stimulus_events(self, event_stream):
+        for stimulus_events in super(PassAct3Aud, self).iterate_stimulus_events(event_stream):
+            modified_events = list()
+            for key, events in stimulus_events:
+                if key == 'question_mark':
+                    if len(events) != 1:
+                        raise ValueError('Expected question_mark to consist of a single event')
+                    # manufacture an event with a different trigger
+                    mark_event = Event(
+                        stimulus=events[0].stimulus,
+                        duration=events[0].duration,
+                        trigger=events[0].trigger + 100,
+                        time_stamp=events[0].time_stamp)
+                    modified_events.append((key, [mark_event]))
+                else:
+                    modified_events.append((key, events))
+            yield modified_events
 
     def _is_auditory_trigger(self, trigger):
-        return trigger not in {254, 255}
+        return trigger < 100
 
 
 class PassAct3AudVis(_PassAct3Base):
 
     def __init__(self):
+
+        def _trigger_key_fn(event):
+            if event.stimulus == '?':
+                return event.trigger + 100
+            return event.trigger
+
         super(PassAct3AudVis, self).__init__(
-            stimulus_triggers=[5, 15], question_triggers=[4, 14], prompt_triggers=[254, 255])
+            stimulus_triggers=[5, 15], question_mark_triggers=[104, 114], question_triggers=[4, 14],
+            prompt_triggers=[254, 255], trigger_key_fn=_trigger_key_fn)
+
+    def iterate_stimulus_events(self, event_stream):
+        for stimulus_events in super(PassAct3AudVis, self).iterate_stimulus_events(event_stream):
+            modified_events = list()
+            for key, events in stimulus_events:
+                if key == 'question_mark':
+                    if len(events) != 1:
+                        raise ValueError('Expected question_mark to consist of a single event')
+                    # manufacture an event with a different trigger
+                    mark_event = Event(
+                        stimulus=events[0].stimulus,
+                        duration=events[0].duration,
+                        trigger=events[0].trigger + 100,
+                        time_stamp=events[0].time_stamp)
+                    modified_events.append((key, [mark_event]))
+                else:
+                    modified_events.append((key, events))
+            yield modified_events
 
     def _is_auditory_trigger(self, trigger):
         return trigger in {14, 15}
