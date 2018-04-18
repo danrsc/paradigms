@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import mne
 from collections import namedtuple
-from .stimulus import Stimulus
+from .stimulus import Stimulus, StimulusBuilder
 from six import itervalues
 
 
@@ -12,7 +12,8 @@ __all__ = ['Word_EventType', 'Question_EventType', 'Response_EventType', 'EventT
            'QuestionEvents', 'num_20questions_words', 'Event20Questions', 'WordGrouping', 'sort_key_20questions',
            'category_counts_20questions', 'create_stimuli_20questions', 'create_stimuli_60words',
            'read_events_20questions', 'read_events_60words', 'load_block_stimuli_20questions',
-           'load_block_stimuli_60words', 'sudre_perceptual_features', 'make_compute_lower_upper_bounds_20questions']
+           'load_block_stimuli_60words', 'sudre_perceptual_features', 'make_compute_lower_upper_bounds_20questions',
+           'words_20questions']
 
 Word_EventType = 'word'
 Question_EventType = 'question'
@@ -321,41 +322,37 @@ def create_stimuli_60words(block_word_events, last_time):
     block_stimuli = list()
     for index_word, word_event in enumerate(block_word_events):
 
-        word_attributes = dict()
-        word_attributes[Stimulus.position_in_parent_attribute_name] = -1
-        word_attributes[Stimulus.position_in_root_attribute_name] = -1
-        word_attributes[Stimulus.master_stimulus_index_attribute_name] = word_event.code - 1
-        word_attributes[Stimulus.sort_key_attribute_name] = sort_key_20questions(word_event.text)
-        word_attributes[Stimulus.stratification_key_attribute_name] = \
+        word_stimulus = StimulusBuilder(Stimulus.word_level)
+        word_stimulus[Stimulus.position_in_parent_attribute_name] = -1
+        word_stimulus[Stimulus.position_in_root_attribute_name] = -1
+        word_stimulus[Stimulus.master_stimulus_index_attribute_name] = word_event.code - 1
+        word_stimulus[Stimulus.sort_key_attribute_name] = sort_key_20questions(word_event.text)
+        word_stimulus[Stimulus.stratification_key_attribute_name] = \
             __word_to_grouping[word_event.text].category
-        word_attributes['category'] = __word_to_grouping[word_event.text].category
-        word_attributes[Stimulus.text_attribute_name] = word_event.text
+        word_stimulus['category'] = __word_to_grouping[word_event.text].category
+        word_stimulus[Stimulus.text_attribute_name] = word_event.text
 
         word_count = word_counts[word_event.text] if word_event.text in word_counts else 0
         word_count += 1
         word_counts[word_event.text] = word_count
-        word_attributes[Stimulus.stimulus_count_presentation_attribute_name] = word_count
-        word_attributes[Stimulus.word_count_presentation_attribute_name] = word_count
-        word_stimulus = Stimulus(Stimulus.word_level, word_attributes, parent=None)
+        word_stimulus[Stimulus.stimulus_count_presentation_attribute_name] = word_count
+        word_stimulus[Stimulus.word_count_presentation_attribute_name] = word_count
 
-        presentation_attributes = dict(word_attributes)
-        presentation_attributes[Stimulus.position_in_parent_attribute_name] = 0
-        presentation_attributes[Stimulus.position_in_root_attribute_name] = 0
-        presentation_attributes[Stimulus.time_stamp_attribute_name] = word_event.time_corrected_in_seconds
+        presentation_stimulus = StimulusBuilder(Stimulus.presentation_level, word_stimulus.copy_attributes())
+        presentation_stimulus[Stimulus.position_in_root_attribute_name] = 0
+        presentation_stimulus[Stimulus.time_stamp_attribute_name] = word_event.time_corrected_in_seconds
         if index_word == len(block_word_events) - 1:
-            presentation_attributes[Stimulus.duration_attribute_name] = (
-                last_time - word_event.time_corrected_in_seconds)
+            presentation_stimulus[Stimulus.duration_attribute_name] = last_time - word_event.time_corrected_in_seconds
         else:
             next_event = block_word_events[index_word + 1]
-            presentation_attributes[Stimulus.duration_attribute_name] = (
+            presentation_stimulus[Stimulus.duration_attribute_name] = (
                 next_event.time_corrected_in_seconds - min_word_event_buffer -
                 word_event.time_corrected_in_seconds)
-        presentation_attributes[Stimulus.duration_attribute_name] = min(
-            presentation_attributes[Stimulus.duration_attribute_name], max_response_duration)
-        Stimulus(Stimulus.presentation_level, presentation_attributes, parent=word_stimulus)
+        presentation_stimulus[Stimulus.duration_attribute_name] = min(
+            presentation_stimulus[Stimulus.duration_attribute_name], max_response_duration)
+        word_stimulus.add_child(presentation_stimulus)
 
-        word_stimulus.update_time()
-        block_stimuli.append(word_stimulus)
+        block_stimuli.append(word_stimulus.make_stimulus())
 
     return block_stimuli
 
@@ -373,84 +370,81 @@ def create_stimuli_20questions(block_question_events, last_time):
 
         for index_word, word_response in enumerate(question_event.word_response_events):
 
-            word_attributes = dict()
-            word_attributes[Stimulus.position_in_parent_attribute_name] = -1
-            word_attributes[Stimulus.position_in_root_attribute_name] = -1
-            word_attributes[Stimulus.master_stimulus_index_attribute_name] = word_response.word_event.code - 1
-            word_attributes[Stimulus.sort_key_attribute_name] = sort_key_20questions(word_response.word_event.text)
-            word_attributes[Stimulus.stratification_key_attribute_name] = \
+            word_stimulus = StimulusBuilder(Stimulus.word_level)
+            word_stimulus[Stimulus.position_in_parent_attribute_name] = -1
+            word_stimulus[Stimulus.position_in_root_attribute_name] = -1
+            word_stimulus[Stimulus.master_stimulus_index_attribute_name] = word_response.word_event.code - 1
+            word_stimulus[Stimulus.sort_key_attribute_name] = sort_key_20questions(word_response.word_event.text)
+            word_stimulus[Stimulus.stratification_key_attribute_name] = \
                 __word_to_grouping[word_response.word_event.text].category
-            word_attributes['category'] = __word_to_grouping[word_response.word_event.text].category
-            word_attributes[Stimulus.text_attribute_name] = word_response.word_event.text
-            word_attributes[Stimulus.question_text_attribute_name] = question_event.question_event.text
+            word_stimulus['category'] = __word_to_grouping[word_response.word_event.text].category
+            word_stimulus[Stimulus.text_attribute_name] = word_response.word_event.text
+            word_stimulus[Stimulus.question_text_attribute_name] = question_event.question_event.text
 
             stimulus_key = question_event.question_event.text + ':' + word_response.word_event.text
             stimulus_count = stimulus_counts[stimulus_key] if stimulus_key in stimulus_counts else 0
             stimulus_count += 1
             stimulus_counts[stimulus_key] = stimulus_count
-            word_attributes[Stimulus.stimulus_count_presentation_attribute_name] = stimulus_count
+            word_stimulus[Stimulus.stimulus_count_presentation_attribute_name] = stimulus_count
 
             word_count = \
                 word_counts[word_response.word_event.text] if word_response.word_event.text in word_counts else 0
             word_count += 1
             word_counts[word_response.word_event.text] = word_count
-            word_attributes[Stimulus.word_count_presentation_attribute_name] = word_count
-            word_stimulus = Stimulus(Stimulus.word_level, word_attributes, parent=None)
+            word_stimulus[Stimulus.word_count_presentation_attribute_name] = word_count
 
-            presentation_attributes = dict(word_attributes)
-            presentation_attributes[Stimulus.position_in_parent_attribute_name] = 0
-            presentation_attributes[Stimulus.position_in_root_attribute_name] = 0
-            presentation_attributes[Stimulus.time_stamp_attribute_name] = \
+            presentation_stimulus = StimulusBuilder(Stimulus.presentation_level, word_stimulus.copy_attributes())
+            presentation_stimulus[Stimulus.position_in_root_attribute_name] = 0
+            presentation_stimulus[Stimulus.time_stamp_attribute_name] = \
                 word_response.word_event.time_corrected_in_seconds
             if word_response.response_event is None:
                 if index_word == len(question_event.word_response_events) - 1:
                     if index_question == len(block_question_events) - 1:
-                        presentation_attributes[Stimulus.duration_attribute_name] = (
+                        presentation_stimulus[Stimulus.duration_attribute_name] = (
                             last_time - word_response.word_event.time_corrected_in_seconds)
                     else:
                         next_event = block_question_events[index_question + 1].word_response_events[0].word_event
-                        presentation_attributes[Stimulus.duration_attribute_name] = (
+                        presentation_stimulus[Stimulus.duration_attribute_name] = (
                             next_event.time_corrected_in_seconds - min_word_event_buffer -
                             word_response.word_event.time_corrected_in_seconds)
                 else:
-                    presentation_attributes[Stimulus.duration_attribute_name] = (
+                    presentation_stimulus[Stimulus.duration_attribute_name] = (
                         question_event.word_response_events[index_word + 1].word_event.time_corrected_in_seconds -
                         min_word_event_buffer - word_response.word_event.time_corrected_in_seconds)
-                presentation_attributes[Stimulus.duration_attribute_name] = min(
-                    presentation_attributes[Stimulus.duration_attribute_name], max_response_duration)
+                presentation_stimulus[Stimulus.duration_attribute_name] = min(
+                    presentation_stimulus[Stimulus.duration_attribute_name], max_response_duration)
             else:
-                presentation_attributes[Stimulus.duration_attribute_name] = (
+                presentation_stimulus[Stimulus.duration_attribute_name] = (
                     word_response.response_event.time_corrected_in_seconds -
                     word_response.word_event.time_corrected_in_seconds)
-            Stimulus(Stimulus.presentation_level, presentation_attributes, parent=word_stimulus)
+            word_stimulus.add_child(presentation_stimulus)
 
             if word_response.response_event is not None:
-                response_attributes = dict(word_attributes)
-                response_attributes[Stimulus.text_attribute_name] = word_response.response_event.text
-                response_attributes[Stimulus.position_in_parent_attribute_name] = 1
-                response_attributes[Stimulus.position_in_root_attribute_name] = 1
-                response_attributes[Stimulus.time_stamp_attribute_name] = \
+                response_stimulus = StimulusBuilder(Stimulus.presentation_level, word_stimulus.copy_attributes())
+                response_stimulus[Stimulus.text_attribute_name] = word_response.response_event.text
+                response_stimulus[Stimulus.position_in_parent_attribute_name] = 1
+                response_stimulus[Stimulus.position_in_root_attribute_name] = 1
+                response_stimulus[Stimulus.time_stamp_attribute_name] = \
                     word_response.response_event.time_corrected_in_seconds
 
                 if index_word == len(question_event.word_response_events) - 1:
                     if index_question == len(block_question_events) - 1:
-                        response_attributes[Stimulus.duration_attribute_name] = (
+                        response_stimulus[Stimulus.duration_attribute_name] = (
                             last_time - word_response.response_event.time_corrected_in_seconds)
                     else:
                         next_event = block_question_events[index_question + 1].word_response_events[0].word_event
-                        response_attributes[Stimulus.duration_attribute_name] = (
+                        response_stimulus[Stimulus.duration_attribute_name] = (
                             next_event.time_corrected_in_seconds - min_word_event_buffer -
                             word_response.response_event.time_corrected_in_seconds)
                 else:
-                    response_attributes[Stimulus.duration_attribute_name] = (
+                    response_stimulus[Stimulus.duration_attribute_name] = (
                         question_event.word_response_events[index_word + 1].word_event.time_corrected_in_seconds -
                         min_word_event_buffer - word_response.response_event.time_corrected_in_seconds)
-                response_attributes[Stimulus.duration_attribute_name] = min(
-                    response_attributes[Stimulus.duration_attribute_name], max_response_duration)
-                Stimulus(Stimulus.presentation_level, response_attributes, parent=word_stimulus)
+                response_stimulus[Stimulus.duration_attribute_name] = min(
+                    response_stimulus[Stimulus.duration_attribute_name], max_response_duration)
+                word_stimulus.add_child(response_stimulus)
 
-            word_stimulus.update_time()
-            block_stimuli.append(word_stimulus)
+            block_stimuli.append(word_stimulus.make_stimulus())
 
     return block_stimuli
 

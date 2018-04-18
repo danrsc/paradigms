@@ -1,0 +1,181 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import string
+
+from .stimulus import Stimulus, StimulusBuilder, add_word_stimuli_to_parent, make_root_stimulus_builder, Event
+from .generic_paradigm import GenericParadigm, make_map_to_stimulus_fn, EventGroupSpec
+
+
+__all__ = ['make_pass_act_3_master_stimuli', 'PassAct3', 'PassAct3Aud', 'PassAct3AudVis']
+
+
+def make_pass_act_3_master_stimuli():
+
+    result = list()
+
+    def _make_stimulus(
+            tagged_sentence,
+            is_active,
+            tagged_question,
+            is_yes_correct):
+
+        def _process_tagged(parent, s):
+            add_word_stimuli_to_parent(parent, s)
+            for index_word_stimulus, word_stimulus in enumerate(parent.children):
+                word_stimulus[Stimulus.position_in_root_attribute_name] = index_word_stimulus
+
+        sb = make_root_stimulus_builder(Stimulus.sentence_level, len(result))
+        sb['is_active'] = is_active
+        sb['is_yes_correct'] = is_yes_correct
+        sb['question'] = StimulusBuilder(Stimulus.sentence_level, attributes=sb.copy_attributes())
+
+        _process_tagged(sb, tagged_sentence)
+        _process_tagged(sb['question'], tagged_question)
+
+        result.append(sb.make_stimulus())
+
+    # Active Sentences
+    _make_stimulus('The/DT man/NN kicked/VBD the/DT girl./NN', True, 'Did/VBD he/PRP see/VB someone?/NN', True),
+    _make_stimulus('The/DT girl/NN helped/VBD the/DT boy./NN', True, 'Did/VBD she/PRP do/VB nothing?/NN', False),
+    _make_stimulus('The/DT woman/NN approached/VBD the/DT man./NN', True, 'Was/VBD he/PRP seen?/VBN', False),
+    _make_stimulus('The/DT boy/NN punched/VBD the/DT woman./NN', True, 'Was/VBD she/PRP attacked?/VBN', True),
+
+    _make_stimulus('The/DT man/NN kicked./VBD', True, 'Was/VBD he/PRP sleeping?/VBG', False),
+    _make_stimulus('The/DT girl/NN helped./VBD', True, 'Did/VBD she/PRP act?/VB', True),
+    _make_stimulus('The/DT woman/NN approached./VBD', True, 'Did/VBD she/PRP move?/VB', True),
+    _make_stimulus('The/DT boy/NN punched./VBD', True, 'Was/VBD he/PRP still?/RB', False),
+
+    _make_stimulus('The/DT girl/NN kicked/VBD the/DT man./NN', True, 'Did/VBD she/PRP behave/VB nicely?/RB', False),
+    _make_stimulus('The/DT boy/NN helped/VBD the/DT girl./NN', True, 'Did/VBD he/PRP do/VB something?/NN', True),
+    _make_stimulus('The/DT man/NN approached/VBD the/DT woman./NN', True, 'Was/VBD she/PRP visible?/JJ', True),
+    _make_stimulus('The/DT woman/NN punched/VBD the/DT boy./NN', True, 'Was/VBD he/PRP safe?/JJ', False),
+
+    _make_stimulus('The/DT girl/NN kicked./VBD', True, 'Was/VBD she/PRP sleeping?/VBG', False),
+    _make_stimulus('The/DT boy/NN helped./VBD', True, 'Did/VBD he/PRP act?/VB', True),
+    _make_stimulus('The/DT man/NN approached./VBD', True, 'Did/VBD he/PRP move?/VB', True),
+    _make_stimulus('The/DT woman/NN punched./VBD', True, 'Was/VBD she/PRP sleeping?/VBG', False),
+
+    # Passive Sentences
+    _make_stimulus('The/DT girl/NN was/VBD kicked/VBD by/IN the/DT man./NN',
+                   False, 'Did/VBD he/PRP see/VB someone?/NN', True),
+    _make_stimulus('The/DT boy/NN was/VBD helped/VBD by/IN the/DT girl./NN',
+                   False, 'Did/VBD she/PRP do/VB nothing?/NN', False),
+    _make_stimulus('The/DT man/NN was/VBD approached/VBD by/IN the/DT woman./NN',
+                   False, 'Was/VBD he/PRP seen?/VBN', False),
+    _make_stimulus('The/DT woman/NN was/VBD punched/VBD by/IN the/DT boy./NN',
+                   False, 'Was/VBD she/PRP attacked?/VBN', True),
+
+    _make_stimulus('The/DT girl/NN was/VBD kicked./VBD', False, 'Was/VBD she/PRP hurt?/JJ', True),
+    _make_stimulus('The/DT boy/NN was/VBD helped./VBD', False, 'Was/VBD he/PRP ignored?/VBN', False),
+    _make_stimulus('The/DT man/NN was/VBD approached./VBD', False, 'Was/VBD he/PRP visible?/JJ', True),
+    _make_stimulus('The/DT woman/NN was/VBD punched./VBD', False, 'Was/VBD she/PRP unharmed?/JJ', False),
+
+    _make_stimulus('The/DT man/NN was/VBD kicked/VBD by/IN the/DT girl./NN',
+                   False, 'Did/VBD she/PRP behave/VB nicely?/RB', False),
+    _make_stimulus('The/DT girl/NN was/VBD helped/VBD by/IN the/DT boy./NN',
+                   False, 'Did/VBD he/PRP do/VB something?/NN', True),
+    _make_stimulus('The/DT woman/NN was/VBD approached/VBD by/IN the/DT man./NN',
+                   False, 'Was/VBD she/PRP visible?/JJ', True),
+    _make_stimulus('The/DT boy/NN was/VBD punched/VBD by/IN the/DT woman./NN',
+                   False, 'Was/VBD he/PRP safe?/JJ', False),
+
+    _make_stimulus('The/DT man/NN was/VBD kicked./VBD', False, 'Was/VBD he/PRP hurt?/JJ', True),
+    _make_stimulus('The/DT girl/NN was/VBD helped./VBD', False, 'Was/VBD she/PRP ignored?/VBN', False),
+    _make_stimulus('The/DT woman/NN was/VBD approached./VBD', False, 'Was/VBD she/PRP visible?/JJ', True),
+    _make_stimulus('The/DT boy/NN was/VBD punched./VBD', False, 'Was/VBD he/PRP unharmed?/JJ', False)
+
+    return tuple(result)
+
+
+_pass_act_3_stimuli = None
+
+
+class _PassAct3Base(GenericParadigm):
+
+    def __init__(self, stimulus_triggers, question_triggers, prompt_triggers):
+
+        global _pass_act_3_stimuli
+        if _pass_act_3_stimuli is None:
+            _pass_act_3_stimuli = make_pass_act_3_master_stimuli()
+
+        def _normalize(s):
+            return s.strip(string.punctuation).lower() if s is not None else ''
+
+        self._master_stimuli = _pass_act_3_stimuli
+        self._map_primary = make_map_to_stimulus_fn(self._master_stimuli, _normalize)
+
+        super(_PassAct3Base, self).__init__(
+            instruction_trigger=1,
+            event_group_specs=[
+                EventGroupSpec(stimulus_triggers, 'stimulus'),
+                EventGroupSpec(question_triggers, 'question'),
+                EventGroupSpec(prompt_triggers, 'prompt')],
+            primary_stimulus_key='stimulus',
+            normalize=_normalize)
+
+    @property
+    def master_stimuli(self):
+        return self._master_stimuli
+
+    def _is_auditory_trigger(self, trigger):
+        raise NotImplementedError('{} does not implement _is_auditory_trigger'.format(type(self)))
+
+    def _infer_auditory_events(self, master_stimulus, key, auditory_event):
+        word_duration = 0.3
+        word_spacing_duration = 0.2
+
+        # now we need to artificially insert the experimental stimuli for each word
+        inferred_events = list()
+        for index_word, word_stimulus in enumerate(master_stimulus.iter_level(Stimulus.word_level)):
+            inferred_events.append(
+                Event(word_stimulus.text, word_duration + word_spacing_duration, auditory_event.trigger,
+                      auditory_event.time_stamp + index_word * (word_duration + word_spacing_duration)))
+        return inferred_events
+
+    def _map_primary_events(self, key, events):
+        return self._map_primary(events)
+
+    def _map_additional_events(self, master_stimulus, key, events):
+        if key == 'prompt':
+            if len(events) != 1:
+                raise ValueError('Expected exactly 1 prompt event')
+            return (
+                key,
+                StimulusBuilder(
+                    Stimulus.word_level, attributes={Stimulus.text_attribute_name: events[0].stimulus}).make_stimulus())
+        if key not in master_stimulus:
+            raise ValueError('Unable to find attribute in master stimulus: {}'.format(key))
+        return master_stimulus[key]
+
+
+class PassAct3(_PassAct3Base):
+
+    def __init__(self):
+        super(PassAct3, self).__init__(stimulus_triggers=3, question_triggers=4, prompt_triggers=[254, 255])
+
+    def _infer_auditory_events(self, master_stimulus, key, auditory_event):
+        raise RuntimeError('This function should never be called on {}'.format(type(self)))
+
+    def _is_auditory_trigger(self, trigger):
+        return False
+
+
+class PassAct3Aud(_PassAct3Base):
+
+    def __init__(self):
+        super(PassAct3Aud, self).__init__(stimulus_triggers=5, question_triggers=4, prompt_triggers=[254, 255])
+
+    def _is_auditory_trigger(self, trigger):
+        return trigger not in {254, 255}
+
+
+class PassAct3AudVis(_PassAct3Base):
+
+    def __init__(self):
+        super(PassAct3AudVis, self).__init__(
+            stimulus_triggers=[5, 15], question_triggers=[4, 14], prompt_triggers=[254, 255])
+
+    def _is_auditory_trigger(self, trigger):
+        return trigger in {14, 15}

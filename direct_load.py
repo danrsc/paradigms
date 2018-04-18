@@ -9,8 +9,7 @@ from itertools import chain
 import numpy
 import mne
 from .twenty_questions import load_block_stimuli_20questions, load_block_stimuli_60words
-from .master_stimuli import MasterStimuliPaths, create_master_stimuli
-from .generic_fif_reader import load_block_stimuli
+from .master_stimuli import MasterStimuli
 
 
 __all__ = ['DirectLoad', 'SubjectBlockReduceArgs']
@@ -164,24 +163,11 @@ class DirectLoad:
                 stimuli = load_block_stimuli_60words(mne_raw)
             return mne_raw, stimuli, False
 
-        experiment_to_path = {
-            'PassAct3': MasterStimuliPaths.passive_active_3,
-            'PassAct3Aud': MasterStimuliPaths.passive_active_3,
-            'PassAct2': MasterStimuliPaths.passive_active_2,
-        }
+        paradigm = MasterStimuli.paradigm_from_experiment(experiment)
 
-        if experiment not in experiment_to_path:
-            raise ValueError('Don\'t know how to locate master stimuli for experiment: {}'.format(experiment))
-
-        master_stimuli_path = experiment_to_path[experiment]
-
-        master_stimuli, configuration, _ = create_master_stimuli(master_stimuli_path)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            stimuli = load_block_stimuli(
-                master_stimuli,
-                configuration,
-                experiment,
+            stimuli = paradigm.load_block_stimuli(
                 mne_raw,
                 self.session_stimuli_path_format.format(subject=subject, experiment=experiment, block=block),
                 int(block) - 1)

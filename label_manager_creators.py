@@ -2,14 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import string
 import re
 import numpy
-import pickle
-from brain_gen import LabelIdManager, LabelEmbeddingManager, flags, Option, SingleItemSpec, log_directory
+from brain_gen import LabelIdManager, LabelEmbeddingManager, flags, Option, SingleItemSpec
 from .stimulus import Stimulus
-from .master_stimuli import MasterStimuliPaths, create_master_stimuli
+from .master_stimuli import MasterStimuli
 from .twenty_questions import words_20questions
 
 
@@ -133,36 +131,8 @@ def stimulus_to_last_word_time(stimulus):
     return result[Stimulus.time_stamp_attribute_name]
 
 
-def master_stimuli_from_flags():
-    if flags().master_stimuli is None:
-        raise ValueError('master_stimuli option must be specified to use this label manager')
-    master_stimuli_path = getattr(MasterStimuliPaths, flags().master_stimuli, None)
-    if master_stimuli_path is None:
-        raise ValueError('Unknown master_stimuli: {}'.format(flags().master_stimuli))
-    master_stimuli_filename = os.path.split(master_stimuli_path)[1]
-    binary_filename = os.path.splitext(master_stimuli_filename)[0] + os.path.extsep + 'bin'
-    binary_file_path = os.path.join(log_directory(), binary_filename)
-
-    is_binary_current = (os.path.exists(binary_file_path) and
-                         abs(os.path.getmtime(master_stimuli_path) - os.path.getmtime(binary_file_path)) < .1)
-
-    if is_binary_current:
-        with open(binary_file_path, 'rb') as binary_file:
-            master_stimuli = pickle.load(binary_file)
-            return master_stimuli
-
-    master_stimuli, _, _ = create_master_stimuli(master_stimuli_path)
-
-    if not os.path.exists(log_directory()):
-        os.makedirs(log_directory())
-        with open(binary_file_path, 'wb') as binary_file:
-            pickle.dump(master_stimuli, binary_file, protocol=pickle.HIGHEST_PROTOCOL)
-
-    return master_stimuli
-
-
 def make_master_stimuli_label_manager():
-    master_stimuli = master_stimuli_from_flags()
+    master_stimuli = MasterStimuli.stimuli_from_name(flags().master_stimuli)
     map_to_key = flags().map_stimulus_to_label_key
     if map_to_key is None:
         raise ValueError('map_stimulus_to_label_key option must be specified to use this label manager')
@@ -186,7 +156,7 @@ def make_master_stimuli_fold_key_manager():
     map_to_fold = flags().map_stimulus_to_fold_key
     if map_to_fold is None:
         return None
-    master_stimuli = master_stimuli_from_flags()
+    master_stimuli = MasterStimuli.stimuli_from_name(flags().master_stimuli)
     fold_keys = list(sorted(set([map_to_fold(s) for s in master_stimuli])))
     return LabelIdManager(fold_keys, map_to_fold)
 
