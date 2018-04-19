@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import string
+import numpy
 
 from .stimulus import Stimulus, StimulusBuilder, add_word_stimuli_to_parent, make_root_stimulus_builder, Event
 from .generic_paradigm import GenericParadigm, make_map_to_stimulus_fn, EventGroupSpec
@@ -135,14 +136,20 @@ class _PassAct3Base(GenericParadigm):
         word_spacing_duration = 0.2
 
         # now we need to artificially insert the experimental stimuli for each word
-        inferred_events = list()
+        inferred_times = list()
         for index_word, word_stimulus in enumerate(master_stimulus.iter_level(Stimulus.word_level)):
-            inferred_events.append(
-                Event(stimulus=word_stimulus.text,
-                      duration=word_duration + word_spacing_duration,
-                      trigger=auditory_event.trigger if index_word == 0 else 2,
-                      time_stamp=auditory_event.time_stamp + index_word * (word_duration + word_spacing_duration)))
-        return inferred_events
+            inferred_times.append(auditory_event.time_stamp + index_word * (word_duration + word_spacing_duration))
+
+        inferred_times.append(auditory_event.time_stamp + auditory_event.duration)
+        durations = numpy.diff(inferred_times).tolist()
+        inferred_times = inferred_times[:-1]
+
+        return [Event(
+            stimulus=word_stimulus.text,
+            duration=duration,
+            trigger=auditory_event.trigger if index_word == 0 else 2,
+            time_stamp=time_stamp) for index_word, (word_stimulus, time_stamp, duration) in enumerate(zip(
+                master_stimulus.iter_level(Stimulus.word_level), inferred_times, durations))]
 
     def _map_primary_events(self, key, events):
         return self._map_primary(events), None, None
