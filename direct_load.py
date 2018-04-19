@@ -123,9 +123,13 @@ class DirectLoad:
         events_list = list()
         event_id_offset = 0
         for block in blocks:
-            mne_raw, stimuli = self.load_block(experiment, subject, block)
+            mne_raw, stimuli, event_load_fix_info = self.load_block(experiment, subject, block)
             events = list()
-            for name, time in chain.from_iterable(map(stimulus_to_name_time_pairs, stimuli)):
+            for item in chain.from_iterable(map(stimulus_to_name_time_pairs, stimuli)):
+                if len(item) != 2:
+                    raise ValueError('Expected stimulus_to_name_time_pairs to return a list of pairs for each '
+                                     'stimulus. Are you returning just a single pair? Got: {}'.format(item))
+                name, time = item
                 sample_index = numpy.searchsorted(mne_raw.times, time, side='left')
                 events.append(numpy.array([sample_index + mne_raw.first_samp, 0, len(events) + event_id_offset]))
                 names.append(name)
