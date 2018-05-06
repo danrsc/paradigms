@@ -12,12 +12,12 @@ from .twenty_questions import load_block_stimuli_20questions, load_block_stimuli
 from .master_stimuli import MasterStimuli
 
 
-__all__ = ['DirectLoad', 'SubjectBlockReduceArgs']
+__all__ = ['DirectLoad', 'SubjectBlockReduceArgs', 'gather_epoch_events', 'region_label_indices']
 
 
 @contextmanager
-def multiprocessing_pool():
-    pool = Pool()
+def multiprocessing_pool(processes=None, maxtasksperchild=None):
+    pool = Pool(processes=processes, maxtasksperchild=maxtasksperchild)
     yield pool
     pool.terminate()
 
@@ -100,6 +100,47 @@ class SubjectBlockReduceArgs:
         return self._structural_label_regex
 
 
+def gather_epoch_events(keys):
+    result = dict()
+    for i, k in enumerate(keys):
+        if k not in result:
+            result[k] = ['{}'.format(i)]
+        else:
+            result[k].append('{}'.format(i))
+    return result
+
+
+def region_label_indices(source_estimates, label):
+    # code taken from https://github.com/mne-tools/mne-python/blob/maint/0.15/mne/source_estimate.py
+    # modified to enable indexing into a numpy array later instead of keeping a SourceEstimates instance
+
+    def _hemilabel_indices(src_estimates, lbl):
+        if lbl.hemi == 'lh':
+            source_vertices = src_estimates.vertices[0]
+        else:
+            source_vertices = src_estimates.vertices[1]
+
+        # find index of the Label's vertices
+        idx = numpy.nonzero(numpy.in1d(source_vertices, lbl.vertices))[0]
+
+        # find data
+        if lbl.hemi == 'rh':
+            return idx + len(src_estimates.vertices[0])
+        else:
+            return idx
+
+    if label.hemi == 'both':
+        left_indices = _hemilabel_indices(source_estimates, label.lh)
+        right_indices = _hemilabel_indices(source_estimates, label.rh)
+        return numpy.concatenate((left_indices, right_indices), axis=0)
+    elif label.hemi == 'lh':
+        return _hemilabel_indices(source_estimates, label)
+    elif label.hemi == 'rh':
+        return _hemilabel_indices(source_estimates, label)
+    else:
+        raise TypeError('Expected  Label or BiHemiLabel; got {}'.format(label))
+
+
 class DirectLoad:
     """
     High level class for directly loading data (for example from a Jupyter notebook)
@@ -116,7 +157,120 @@ class DirectLoad:
         self.inverse_operator_path_format = inverse_operator_path_format
         self.structural_directory = structural_directory
 
+    def load_source_estimates(self, experiment, subject, blocks, structural, stimulus_to_name_time_pairs, tmin, tmax):
+        results = list(self.iterate_source_estimates(
+            experiment, subject, blocks, structural, stimulus_to_name_time_pairs,
+            partition_key_fn=lambda s: 0, tmin=tmin, tmax=tmax))
+        assert(len(results) == 1)
+        return results[0][1]
+
+    def iterate_source_estimates(
+            self,
+            experiment,
+            subject,
+            blocks,
+            structural,
+            stimulus_to_name_time_pairs,
+            partition_key_fn,
+            tmin,
+            tmax):
+
+        epochs, keys = self.load_epochs(
+            experiment, subject, blocks, stimulus_to_name_time_pairs, tmin=tmin, tmax=tmax)
+
+        key_to_events = gather_epoch_events(keys)
+
+        partitioned_keys = dict()
+        for key in key_to_events:
+            partition_key = partition_key_fn(key)
+            if partition_key not in partitioned_keys:
+                partitioned_keys[partition_key] = [key]
+            else:
+                partitioned_keys[partition_key].append(key)
+
+        inv_op, region_labels = self.load_structural(experiment, subject, structural)
+
+        time = None
+        for partition_key in partitioned_keys:
+            result = dict()
+            stimuli_keys = partitioned_keys[partition_key]
+            for key in stimuli_keys:
+                key_epochs = epochs[key_to_events[key]]
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=DeprecationWarning)
+                    key_evoked = key_epochs.average()
+                    if time is None:
+                        time = key_evoked.times
+                    result[key] = mne.minimum_norm.apply_inverse(key_evoked, inv_op, verbose=False)
+            yield partition_key, (result, time, region_labels)
+
+    def multiprocess_imap_unordered_epochs(
+            self, experiment, subject, blocks, stimulus_to_name_time_pairs, group_key_fn, map_fn,
+            is_debug_with_single_process=False, processes=None, maxtasksperchild=None, **load_epochs_kwargs):
+
+        epochs, keys, events_list = self._load_epochs_internal(
+            experiment, subject, blocks, stimulus_to_name_time_pairs, **load_epochs_kwargs)
+
+        fif_paths = [
+            self.fif_path_format.format(experiment=experiment, subject=subject, block=block) for block in blocks]
+
+        key_to_events = gather_epoch_events(keys)
+
+        group_keys = dict()
+        for key in key_to_events:
+            group_key = group_key_fn(key)
+            if group_key not in group_keys:
+                group_keys[group_key] = [key]
+            else:
+                group_keys[group_key].append(key)
+
+        map_fn_wrapper = partial(
+            DirectLoad._multiprocess_map_epochs_fn,
+            events_list, fif_paths, key_to_events, group_keys, map_fn, **load_epochs_kwargs)
+
+        if is_debug_with_single_process:
+            for item in map(map_fn_wrapper, group_keys):
+                yield item
+        else:
+            with multiprocessing_pool(processes=processes, maxtasksperchild=maxtasksperchild) as pool:
+                for item in pool.imap_unordered(map_fn_wrapper, group_keys):
+                    yield item
+
+    @staticmethod
+    def _multiprocess_map_epochs_fn(
+            events_list, fif_paths, key_to_events, group_keys, map_fn, group_key, **load_epochs_kwargs):
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            epochs = DirectLoad._load_pre_mapped_epochs(events_list, fif_paths, **load_epochs_kwargs)
+        current_keys = group_keys[group_key]
+        to_map = dict([(key, epochs[key_to_events[key]]) for key in current_keys])
+        return map_fn(group_key, to_map)
+
+    @staticmethod
+    def _load_pre_mapped_epochs(events_list, fif_paths, **kwargs):
+        try:
+            all_raw_objects = [mne.io.Raw(fif_path, add_eeg_ref=False, verbose=False) for fif_path in fif_paths]
+        except TypeError:
+            all_raw_objects = [mne.io.Raw(fif_path, verbose=False) for fif_path in fif_paths]
+
+        virtual_raw, all_events = mne.concatenate_raws(all_raw_objects, preload=False, events_list=events_list)
+        try:
+            epochs = mne.Epochs(virtual_raw, all_events, add_eeg_ref=False, verbose=False, **kwargs)
+        except TypeError:
+            # add_eeg_ref is gone
+            epochs = mne.Epochs(virtual_raw, all_events, verbose=False, **kwargs)
+        return epochs
+
     def load_epochs(
+            self, experiment, subject, blocks, stimulus_to_name_time_pairs, verbose=False, **kwargs):
+        epochs, names, events_list = self._load_epochs_internal(
+            experiment, subject, blocks, stimulus_to_name_time_pairs, verbose, **kwargs)
+        return epochs, names
+
+    def _load_epochs_internal(
             self, experiment, subject, blocks, stimulus_to_name_time_pairs, verbose=False, **kwargs):
         all_raw_objects = list()
         names = list()
@@ -143,7 +297,7 @@ class DirectLoad:
         except TypeError:
             # add_eeg_ref is gone
             epochs = mne.Epochs(virtual_raw, all_events, verbose=verbose, **kwargs)
-        return epochs, names
+        return epochs, names, events_list
 
     def load_block(self, experiment, subject, block):
         import warnings
