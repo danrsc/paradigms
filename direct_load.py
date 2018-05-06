@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+import re
 from multiprocessing import Pool
 from contextlib import contextmanager
 from functools import partial
@@ -10,6 +12,7 @@ import numpy
 import mne
 from .twenty_questions import load_block_stimuli_20questions, load_block_stimuli_60words
 from .master_stimuli import MasterStimuli
+from brain_gen import match_recordings
 
 
 __all__ = ['DirectLoad', 'SubjectBlockReduceArgs', 'gather_epoch_events', 'region_label_indices']
@@ -146,16 +149,67 @@ class DirectLoad:
     High level class for directly loading data (for example from a Jupyter notebook)
     """
 
+    @staticmethod
+    def make_standard_recording_tuple_regex(pre_processing_string):
+        if pre_processing_string is None or pre_processing_string == 'raw':
+            pre_processing_string_a = 'raw'
+            pre_processing_string_b = ''
+        else:
+            pre_processing_string_a = pre_processing_string
+            pre_processing_string_b = '_' + pre_processing_string
+
+        return (
+            r'.*[/\\](?P<experiment>[^/\\]+)[/\\]data[/\\]'
+            + pre_processing_string_a + r'[/\\](?P<subject>[^/\\]+)[/\\]'
+            + r'(?P=subject)_(?P=experiment)_(?P<recording>.+)' + pre_processing_string_b + r'_raw\.fif')
+
     def __init__(
             self,
             session_stimuli_path_format,
-            fif_path_format,
+            data_root,
+            recording_tuple_regex,
             inverse_operator_path_format=None,
             structural_directory=None):
         self.session_stimuli_path_format = session_stimuli_path_format
-        self.fif_path_format = fif_path_format
+        self._recording_dict = dict()
+        regex = re.compile(recording_tuple_regex, flags=re.IGNORECASE)
+        for recording in match_recordings(data_root, regex):
+            key = (recording.experiment, recording.subject)
+            if key not in self._recording_dict:
+                self._recording_dict[key] = {recording.recording: recording}
+            else:
+                self._recording_dict[key][recording.recording] = recording
         self.inverse_operator_path_format = inverse_operator_path_format
         self.structural_directory = structural_directory
+
+    def get_recordings(self, experiment, subject, blocks=None):
+        key = (experiment, subject)
+        if key not in self._recording_dict:
+            raise ValueError('Unknown experiment/subject combination: {}, {}'.format(experiment, subject))
+        subject_recordings = self._recording_dict[key]
+        if blocks is not None:
+            for b in blocks:
+                if b not in subject_recordings:
+                    raise ValueError('Block {} does not exist for experiment {}, subject {}'.format(
+                        b, experiment, subject))
+            block_keys = blocks
+        else:
+            block_keys = [b for b in subject_recordings if b.lower() != 'emptyroom']
+        int_block_keys = list()
+        for b in block_keys:
+            try:
+                int_b = int(b)
+                int_block_keys.append(int_b)
+            except ValueError:
+                break
+        if len(int_block_keys) == len(block_keys):
+            block_keys = [b for i, b in sorted(zip(int_block_keys, block_keys), key=lambda ib: ib[0])]
+        else:
+            block_keys = sorted(block_keys)
+        return [subject_recordings[b] for b in block_keys]
+
+    def get_blocks(self, experiment, subject):
+        return [r.recording for r in self.get_recordings(experiment, subject)]
 
     def load_source_estimates(self, experiment, subject, blocks, structural, stimulus_to_name_time_pairs, tmin, tmax):
         results = list(self.iterate_source_estimates(
@@ -212,8 +266,7 @@ class DirectLoad:
         epochs, keys, events_list = self._load_epochs_internal(
             experiment, subject, blocks, stimulus_to_name_time_pairs, **load_epochs_kwargs)
 
-        fif_paths = [
-            self.fif_path_format.format(experiment=experiment, subject=subject, block=block) for block in blocks]
+        fif_paths = [recording.full_path for recording in self.get_recordings(experiment, subject, blocks)]
 
         key_to_events = gather_epoch_events(keys)
 
@@ -300,16 +353,15 @@ class DirectLoad:
         return epochs, names, events_list
 
     def load_block(self, experiment, subject, block):
+        block_path = self.get_recordings(experiment, subject, blocks=[block])[0].full_path
         import warnings
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             try:
-                mne_raw = mne.io.Raw(self.fif_path_format.format(
-                    experiment=experiment, subject=subject, block=block), add_eeg_ref=False, verbose=False)
+                mne_raw = mne.io.Raw(block_path, add_eeg_ref=False, verbose=False)
             except TypeError:
                 # add_eeg_ref is gone
-                mne_raw = mne.io.Raw(self.fif_path_format.format(
-                    experiment=experiment, subject=subject, block=block), verbose=False)
+                mne_raw = mne.io.Raw(block_path, verbose=False)
         if experiment == '20questions':
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
