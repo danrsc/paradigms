@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 
+import os
 import re
 from multiprocessing import Pool
 from contextlib import contextmanager
@@ -11,11 +12,18 @@ from itertools import chain
 import numpy
 import mne
 from .twenty_questions import load_block_stimuli_20questions, load_block_stimuli_60words
+from .krns_2 import KRNS2
 from .master_stimuli import MasterStimuli
 from brain_gen import match_recordings
 
 
-__all__ = ['DirectLoad', 'SubjectBlockReduceArgs', 'gather_epoch_events', 'region_label_indices']
+__all__ = [
+    'DirectLoad',
+    'SubjectBlockReduceArgs',
+    'gather_epoch_events',
+    'no_warn_average',
+    'no_warn_load',
+    'region_label_indices']
 
 
 @contextmanager
@@ -113,6 +121,20 @@ def gather_epoch_events(keys):
     return result
 
 
+def no_warn_load(epochs, **pick_types):
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=DeprecationWarning)
+        return epochs.load_data().pick_types(**pick_types)
+
+
+def no_warn_average(epochs, **pick_types):
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=DeprecationWarning)
+        return epochs.average().pick_types(**pick_types)
+
+
 def region_label_indices(source_estimates, label):
     # code taken from https://github.com/mne-tools/mne-python/blob/maint/0.15/mne/source_estimate.py
     # modified to enable indexing into a numpy array later instead of keeping a SourceEstimates instance
@@ -185,6 +207,7 @@ class DirectLoad:
     def get_recordings(self, experiment, subject, blocks=None):
         key = (experiment, subject)
         if key not in self._recording_dict:
+            print(sorted(self._recording_dict))
             raise ValueError('Unknown experiment/subject combination: {}, {}'.format(experiment, subject))
         subject_recordings = self._recording_dict[key]
         if blocks is not None:
@@ -365,13 +388,23 @@ class DirectLoad:
         if experiment == '20questions':
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
-                stimuli = load_block_stimuli_20questions(mne_raw)
+                stimuli = load_block_stimuli_20questions(mne_raw, verbose=False)
             return mne_raw, stimuli, None
         if experiment == '60words':
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
-                stimuli = load_block_stimuli_60words(mne_raw)
+                stimuli = load_block_stimuli_60words(mne_raw, verbose=False)
             return mne_raw, stimuli, None
+        if experiment.lower() == 'krns2':
+            paradigm = KRNS2()
+            sentence_stimuli_path = self.session_stimuli_path_format.format(
+                subject=subject, experiment=experiment, block=block)
+            word_stimuli_path = os.path.join(os.path.split(sentence_stimuli_path)[0], 'wordBlock.mat')
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                stimuli, event_load_fix_info = paradigm.load_block_stimuli(
+                    mne_raw, word_stimuli_path, sentence_stimuli_path, int(block) - 1)
+            return mne_raw, stimuli, event_load_fix_info
 
         paradigm = MasterStimuli.paradigm_from_experiment(experiment)
 
