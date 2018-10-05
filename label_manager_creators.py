@@ -29,7 +29,10 @@ __all__ = [
     'stimulus_to_first_non_to_be_verb_text',
     'stimulus_to_first_non_to_be_verb_time',
     'stimulus_to_full_text',
-    'stimulus_to_last_word_time']
+    'stimulus_to_last_word_time',
+    'noun_tags',
+    'verb_tags',
+    'to_be_verbs']
 
 
 def get_options():
