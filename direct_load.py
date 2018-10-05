@@ -14,6 +14,7 @@ import mne
 from .twenty_questions import load_block_stimuli_20questions, load_block_stimuli_60words
 from .krns_2 import KRNS2
 from .master_stimuli import MasterStimuli
+from .harry_potter import create_stimuli_harry_potter
 from brain_gen import match_recordings
 
 
@@ -111,13 +112,25 @@ class SubjectBlockReduceArgs:
         return self._structural_label_regex
 
 
-def gather_epoch_events(keys):
+def gather_epoch_events(keys, key=None, return_original_keys=False):
     result = dict()
+    original_key_result = dict()
     for i, k in enumerate(keys):
+        orig_k = k
+        if key is not None:
+            k = key(k)
         if k not in result:
             result[k] = ['{}'.format(i)]
         else:
             result[k].append('{}'.format(i))
+        if return_original_keys:
+            if k not in original_key_result:
+                original_key_result[k] = [orig_k]
+            else:
+                original_key_result[k].append(orig_k)
+
+    if return_original_keys:
+        return result, original_key_result
     return result
 
 
@@ -253,7 +266,7 @@ class DirectLoad:
             tmax):
 
         epochs, keys = self.load_epochs(
-            experiment, subject, blocks, stimulus_to_name_time_pairs, tmin=tmin, tmax=tmax)
+            experiment, subject, blocks, stimulus_to_name_time_pairs, tmin=tmin, tmax=tmax, add_eeg_ref=True)
 
         key_to_events = gather_epoch_events(keys)
 
@@ -347,7 +360,7 @@ class DirectLoad:
         return epochs, names
 
     def _load_epochs_internal(
-            self, experiment, subject, blocks, stimulus_to_name_time_pairs, verbose=False, **kwargs):
+            self, experiment, subject, blocks, stimulus_to_name_time_pairs, verbose=False, add_eeg_ref=False, **kwargs):
         all_raw_objects = list()
         names = list()
         events_list = list()
@@ -368,23 +381,28 @@ class DirectLoad:
             all_raw_objects.append(mne_raw)
 
         virtual_raw, all_events = mne.concatenate_raws(all_raw_objects, preload=False, events_list=events_list)
+
         try:
-            epochs = mne.Epochs(virtual_raw, all_events, add_eeg_ref=False, verbose=verbose, **kwargs)
+            epochs = mne.Epochs(virtual_raw, all_events, add_eeg_ref=add_eeg_ref, verbose=verbose, **kwargs)
         except TypeError:
             # add_eeg_ref is gone
             epochs = mne.Epochs(virtual_raw, all_events, verbose=verbose, **kwargs)
+            if add_eeg_ref:
+                epochs.set_eeg_reference()
         return epochs, names, events_list
 
-    def load_block(self, experiment, subject, block):
+    def load_block(self, experiment, subject, block, add_eeg_ref=False):
         block_path = self.get_recordings(experiment, subject, blocks=[block])[0].full_path
         import warnings
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             try:
-                mne_raw = mne.io.Raw(block_path, add_eeg_ref=False, verbose=False)
+                mne_raw = mne.io.Raw(block_path, add_eeg_ref=add_eeg_ref, verbose=False)
             except TypeError:
                 # add_eeg_ref is gone
                 mne_raw = mne.io.Raw(block_path, verbose=False)
+                if add_eeg_ref:
+                    mne_raw.set_eeg_reference()
         if experiment == '20questions':
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -405,6 +423,17 @@ class DirectLoad:
                 stimuli, event_load_fix_info = paradigm.load_block_stimuli(
                     mne_raw, word_stimuli_path, sentence_stimuli_path, int(block) - 1)
             return mne_raw, stimuli, event_load_fix_info
+        if experiment.lower() == 'harrypotter':
+            harry_potter_event_file_name = '{subject}_HP_HarryPotter_{block}_1_events.txt'.format(
+                subject=subject, block=int(block))
+            sentence_stimuli_path = self.session_stimuli_path_format.format(
+                subject=subject, experiment=experiment, block=block)
+            harry_potter_event_path = os.path.join(
+                os.path.split(sentence_stimuli_path)[0], harry_potter_event_file_name)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                stimuli = create_stimuli_harry_potter(mne_raw, harry_potter_event_path, int(block) - 1)
+            return mne_raw, stimuli, None
 
         paradigm = MasterStimuli.paradigm_from_experiment(experiment)
 
