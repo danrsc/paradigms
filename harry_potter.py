@@ -22,20 +22,6 @@ def create_stimuli_harry_potter(mne_raw, harry_potter_event_text_path, block, pr
         fif_events = mne.find_events(
             mne_raw, stim_channel='STI101', shortest_event=1, uint_cast=True, min_duration=0.000, verbose=False)
 
-    # filter out the first plus, which has trigger == 1
-    assert(fif_events[0, index_event_id_column] == 1)
-    len_with_trigger_1 = len(fif_events)
-    fif_events = fif_events[fif_events[:, index_event_id_column] != trigger_first_plus]
-    assert(len(fif_events) == len_with_trigger_1 - 1)
-    assert(stimuli[0] == '+')
-    stimuli = stimuli[1:]
-
-    # if the leading stimulus is not a '+' and the first event trigger is a 40, that's ok. Seems like a mistake in the
-    # trigger id
-    if stimuli[0].strip() != '+' and (
-            fif_events[0, index_event_id_column] != trigger_content):
-        fif_events[0, index_event_id_column] = trigger_content
-
     # hack: filter out events where the middle column of the next event is not 0
     # this column indicates the value of the channel just before the current event. In our paradigms, this should
     # always be a 0. When it is not 0, the previous event is probably bogus
@@ -46,6 +32,22 @@ def create_stimuli_harry_potter(mne_raw, harry_potter_event_text_path, block, pr
         indicator_real_events = numpy.full(fif_events.shape[0], True)
         indicator_real_events[indices_bogus_events] = False
         fif_events = fif_events[indicator_real_events]
+
+    # filter out the first plus, which has trigger == 1
+    if fif_events[0, index_event_id_column] == 255:  # some subjects have a 255 event at the beginning
+        fif_events = fif_events[1:]
+    assert (fif_events[0, index_event_id_column] == 1)
+    len_with_trigger_1 = len(fif_events)
+    fif_events = fif_events[fif_events[:, index_event_id_column] != trigger_first_plus]
+    assert (len(fif_events) == len_with_trigger_1 - 1)
+    assert (stimuli[0] == '+')
+    stimuli = stimuli[1:]
+
+    # if the leading stimulus is not a '+' and the first event trigger is a 40, that's ok. Seems like a mistake in the
+    # trigger id
+    if stimuli[0].strip() != '+' and (
+            fif_events[0, index_event_id_column] != trigger_content):
+        fif_events[0, index_event_id_column] = trigger_content
 
     if len(fif_events) != len(stimuli):
 
