@@ -7,7 +7,7 @@ import numpy
 import mne
 from six.moves import zip_longest
 
-from brain_gen.core import flags, zip_equal
+from .generic_utility import zip_equal
 from .stimulus import Stimulus, Event
 
 
@@ -17,7 +17,6 @@ __all__ = [
     'GenericParadigm',
     'EventLoadFixInfo',
     'make_map_to_stimulus_fn',
-    'map_recording_to_session_stimuli_path',
     'load_session_stimuli_block_events',
     'load_fif_block_events']
 
@@ -131,6 +130,7 @@ class GenericParadigm(object):
         self._trigger_key_fn = trigger_key_fn
         self._visual_stimulus_delay_in_seconds = visual_stimulus_delay_in_seconds
         self._auditory_stimulus_delay_in_seconds = auditory_stimulus_delay_in_seconds
+
 
     @property
     def normalize(self):
@@ -283,10 +283,21 @@ class GenericParadigm(object):
 
         return stimuli
 
+    @property
+    def relative_session_stimuli_path_format(self):
+        return '{experiment}/meta/{subject}/sentenceBlock.mat'
+
+    def map_recording_to_session_stimuli_path(self, recording_tuple):
+        experiment_dir = os.path.split(recording_tuple.full_path)[0]
+        for _ in range(3):  # move up 3 levels (data/processing/subject)
+            experiment_dir = os.path.split(experiment_dir)[0]
+        file_name = self.relative_session_stimuli_path_format.format(**recording_tuple)
+        return os.path.join(experiment_dir, file_name)
+
     def make_compute_lower_upper_bounds_from_master_stimuli(self, recording_tuple):
 
         def compute_lower_upper_bounds(mne_raw):
-            session_stimuli_path = map_recording_to_session_stimuli_path(recording_tuple)
+            session_stimuli_path = self.map_recording_to_session_stimuli_path(recording_tuple)
             stimuli, event_load_fix_info = self.load_block_stimuli(
                 mne_raw, session_stimuli_path, int(recording_tuple.recording) - 1)
 
@@ -316,11 +327,6 @@ def make_map_to_stimulus_fn(master_stimuli, normalize):
             return normalized_text_to_master[key]
 
     return _match
-
-
-def map_recording_to_session_stimuli_path(recording_tuple):
-    file_name = flags().relative_session_stimuli_path_format.format(**recording_tuple)
-    return os.path.join(flags().data_root, file_name)
 
 
 def load_session_stimuli_block_events(session_stimuli_mat, index_block):

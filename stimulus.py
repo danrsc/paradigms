@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from brain_gen.core import zip_equal
+from .generic_utility import zip_equal
 
 
 __all__ = [

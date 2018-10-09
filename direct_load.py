@@ -15,7 +15,7 @@ from .twenty_questions import load_block_stimuli_20questions, load_block_stimuli
 from .krns_2 import KRNS2
 from .master_stimuli import MasterStimuli
 from .harry_potter import create_stimuli_harry_potter
-from brain_gen import match_recordings
+from .data_match import match_recordings
 
 
 __all__ = [
@@ -44,7 +44,7 @@ def _reduce_stimuli(subject_args, direct_load, filter_fn, map_fn, reduce_fn):
         else:
             inverse_op = None
             region_labels = None
-        mne_raw, stimuli = direct_load.load_block(subject_args.experiment, subject_args.subject, subject_args.block)
+        mne_raw, stimuli, _ = direct_load.load_block(subject_args.experiment, subject_args.subject, subject_args.block)
         result = None
         is_first = True
         for s in stimuli:
@@ -208,7 +208,7 @@ class DirectLoad:
         self.session_stimuli_path_format = session_stimuli_path_format
         self._recording_dict = dict()
         regex = re.compile(recording_tuple_regex, flags=re.IGNORECASE)
-        for recording in match_recordings(data_root, regex):
+        for recording in match_recordings(data_root, regex, experiment_on_unmatched='20questions'):
             key = (recording.experiment, recording.subject)
             if key not in self._recording_dict:
                 self._recording_dict[key] = {recording.recording: recording}

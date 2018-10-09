@@ -6,7 +6,7 @@ import string
 from itertools import zip_longest
 import numpy
 import mne
-from brain_gen.core import zip_equal
+from .generic_utility import zip_equal
 from .stimulus import Stimulus, StimulusBuilder, add_word_stimuli_to_parent, make_root_stimulus_builder, Event
 from .generic_paradigm import EventLoadFixInfo
 

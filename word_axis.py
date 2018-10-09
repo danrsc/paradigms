@@ -5,8 +5,8 @@ from __future__ import print_function
 
 import numpy
 
-from brain_gen.core import copy_from_properties
-from brain_gen.io import sort_regions, coalesce_lobes, to_lobe_names
+from .generic_utility import copy_from_properties
+from .source_localized_region_references import sort_regions, coalesce_lobes, to_lobe_names
 
 
 __all__ = [
