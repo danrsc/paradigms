@@ -19,7 +19,7 @@ from .data_match import match_recordings
 
 
 __all__ = [
-    'DirectLoad',
+    'Loader',
     'SubjectBlockReduceArgs',
     'gather_epoch_events',
     'no_warn_average',
@@ -179,7 +179,7 @@ def region_label_indices(source_estimates, label):
         raise TypeError('Expected  Label or BiHemiLabel; got {}'.format(label))
 
 
-class DirectLoad:
+class Loader:
     """
     High level class for directly loading data (for example from a Jupyter notebook)
     """
@@ -315,7 +315,7 @@ class DirectLoad:
                 group_keys[group_key].append(key)
 
         map_fn_wrapper = partial(
-            DirectLoad._multiprocess_map_epochs_fn,
+            Loader._multiprocess_map_epochs_fn,
             events_list, fif_paths, key_to_events, group_keys, map_fn, **load_epochs_kwargs)
 
         if is_debug_with_single_process:
@@ -333,7 +333,7 @@ class DirectLoad:
         import warnings
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            epochs = DirectLoad._load_pre_mapped_epochs(events_list, fif_paths, **load_epochs_kwargs)
+            epochs = Loader._load_pre_mapped_epochs(events_list, fif_paths, **load_epochs_kwargs)
         current_keys = group_keys[group_key]
         to_map = dict([(key, epochs[key_to_events[key]]) for key in current_keys])
         return map_fn(group_key, to_map)
@@ -469,14 +469,14 @@ class DirectLoad:
         if isinstance(items, list) or isinstance(items, tuple):
             result = list()
             for item in items:
-                result.append(DirectLoad._map_to_flat_index(item, flat_result))
+                result.append(Loader._map_to_flat_index(item, flat_result))
             if isinstance(items, tuple):
                 result = tuple(result)
             return result
         elif isinstance(items, dict):
             result = dict()
             for key in items:
-                result[key] = DirectLoad._map_to_flat_index(items[key], flat_result)
+                result[key] = Loader._map_to_flat_index(items[key], flat_result)
             return result
         else:
             flat_result.append(items)
@@ -487,23 +487,23 @@ class DirectLoad:
         if isinstance(items, list) or isinstance(items, tuple):
             result = list()
             for item in items:
-                result.append(DirectLoad._reconstruct(item, flat_result))
+                result.append(Loader._reconstruct(item, flat_result))
             if isinstance(items, tuple):
                 result = tuple(result)
             return result
         elif isinstance(items, dict):
             result = dict()
             for key in items:
-                result[key] = DirectLoad._reconstruct(items[key], flat_result)
+                result[key] = Loader._reconstruct(items[key], flat_result)
             return result
         else:
             return flat_result[items]
 
     def reduce_subject_stimuli(self, subject_block_reduce_arguments, filter_fn, map_fn, reduce_fn):
         flattened = list()
-        struct_with_indices = DirectLoad._map_to_flat_index(subject_block_reduce_arguments, flattened)
+        struct_with_indices = Loader._map_to_flat_index(subject_block_reduce_arguments, flattened)
         pool_map_fn = partial(
             _reduce_stimuli, direct_load=self, filter_fn=filter_fn, map_fn=map_fn, reduce_fn=reduce_fn)
         with multiprocessing_pool() as pool:
             block_results = list(pool.map(pool_map_fn, flattened))
-        return DirectLoad._reconstruct(struct_with_indices, block_results)
+        return Loader._reconstruct(struct_with_indices, block_results)
