@@ -204,7 +204,8 @@ class Loader:
             data_root,
             recording_tuple_regex,
             inverse_operator_path_format=None,
-            structural_directory=None):
+            structural_directory=None,
+            experiment_subject_to_structural_subject=None):
         self.session_stimuli_path_format = session_stimuli_path_format
         self._recording_dict = dict()
         regex = re.compile(recording_tuple_regex, flags=re.IGNORECASE)
@@ -216,6 +217,10 @@ class Loader:
                 self._recording_dict[key][recording.recording] = recording
         self.inverse_operator_path_format = inverse_operator_path_format
         self.structural_directory = structural_directory
+        self.experiment_subject_to_structural_subject = experiment_subject_to_structural_subject
+        if self.structural_directory is not None and self.experiment_subject_to_structural_subject is None:
+            raise ValueError('If structural directory is provided, '
+                             'experiment_subject_to_structural_subject must also be provided')
 
     def get_recordings(self, experiment, subject, blocks=None):
         key = (experiment, subject)
@@ -247,19 +252,73 @@ class Loader:
     def get_blocks(self, experiment, subject):
         return [r.recording for r in self.get_recordings(experiment, subject)]
 
-    def load_source_estimates(self, experiment, subject, blocks, structural, stimulus_to_name_time_pairs, tmin, tmax):
+    def in_label(self, vertices, experiment, subject, label_name):
+        with mne.utils.use_log_level(False):
+            inv, mne_labels = self.load_structural(experiment, subject)
+
+        label = [lbl for lbl in mne_labels if lbl.name == label_name]
+        if len(label) == 0:
+            raise ValueError('Unable to find label with name: {}'.format(label_name))
+        label = label[0]
+
+        if label.hemi == 'lh':
+            indicator = numpy.in1d(label.vertices, inv['src'][0]['vertno'])
+            label_vertices = label.vertices[indicator]
+        elif label.hemi == 'rh':
+            indicator = numpy.in1d(label.vertices, inv['src'][1]['vertno'])
+            label_vertices = label.vertices[indicator]
+        else:
+            assert (label.hemi == 'both')
+            indicator = numpy.in1d(label.lh.vertices, inv['src'][0]['vertno'])
+            label_vertices = label.vertices[indicator]
+            indicator = numpy.in1d(label.rh.vertices, inv['src'][1]['vertno'])
+            label_vertices = numpy.concatenate([label_vertices, label.rh.vertices[indicator]])
+
+        return numpy.in1d(vertices, label_vertices)
+
+    def vertex_coordinates(self, subject, vertices):
+        with mne.utils.use_log_level(False):
+            _, mne_labels = self.load_structural('harryPotter', subject)
+
+        pos = numpy.full((len(vertices), 3), numpy.nan)
+        for label in mne_labels:
+            indicator = numpy.in1d(label.vertices, vertices)
+            for v, p in zip(label.vertices[indicator], label.pos[indicator]):
+                pos[v == vertices] = p
+        return pos
+
+    def load_source_estimates(self, experiment, subject, blocks, stimulus_to_name_time_pairs, tmin, tmax):
         results = list(self.iterate_source_estimates(
-            experiment, subject, blocks, structural, stimulus_to_name_time_pairs,
+            experiment, subject, blocks, stimulus_to_name_time_pairs,
             partition_key_fn=lambda s: 0, tmin=tmin, tmax=tmax))
         assert(len(results) == 1)
         return results[0][1]
+
+    def make_source_estimate_from_data(self, experiment, subject, data, vertices, tmin=None, tstep=None):
+        with mne.utils.use_log_level(False):
+            inv, _ = self.load_structural(experiment, subject)
+        indicator_left = numpy.in1d(vertices, inv['src'][0]['vertno'])
+        indicator_right = numpy.in1d(vertices, inv['src'][1]['vertno'])
+        if not numpy.all(numpy.logical_or(indicator_left, indicator_right)):
+            bad_vertices = vertices[numpy.logical_not(numpy.logical_or(indicator_left, indicator_right))]
+            raise ValueError('Some vertices do not exist in the inverse operator: {}'.format(bad_vertices))
+
+        left = vertices[indicator_left]
+        right = vertices[indicator_right]
+
+        # some vertices are in both left and right, so we need to adjust the data
+        indices_left = numpy.flatnonzero(indicator_left)
+        indices_right = numpy.flatnonzero(indicator_right)
+        indices = numpy.concatenate([indices_left, indices_right])
+        data = data[indices]
+
+        return mne.SourceEstimate(data, [left, right], subject=subject, tmin=tmin, tstep=tstep)
 
     def iterate_source_estimates(
             self,
             experiment,
             subject,
             blocks,
-            structural,
             stimulus_to_name_time_pairs,
             partition_key_fn,
             tmin,
@@ -278,7 +337,7 @@ class Loader:
             else:
                 partitioned_keys[partition_key].append(key)
 
-        inv_op, region_labels = self.load_structural(experiment, subject, structural)
+        inv_op, region_labels = self.load_structural(experiment, subject)
 
         time = None
         for partition_key in partitioned_keys:
@@ -445,15 +504,18 @@ class Loader:
                 int(block) - 1)
         return mne_raw, stimuli, event_load_fix_info
 
-    def load_structural(self, experiment, subject, structural, structural_label_regex=None):
+    def load_structural(self, experiment, subject, structural_label_regex=None):
         import warnings
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             filled_inv_path = self.inverse_operator_path_format.format(
-                subject=subject, experiment=experiment, structural=structural)
+                subject=subject,
+                experiment=experiment,
+                structural=self.experiment_subject_to_structural_subject[(experiment, subject)])
             inv = mne.minimum_norm.read_inverse_operator(filled_inv_path, verbose=False)
             labels = mne.read_labels_from_annot(
-                structural, parc='aparc', subjects_dir=self.structural_directory, regexp=structural_label_regex)
+                subject=self.experiment_subject_to_structural_subject[(experiment, subject)],
+                parc='aparc', subjects_dir=self.structural_directory, regexp=structural_label_regex)
         return inv, labels
 
     @staticmethod
