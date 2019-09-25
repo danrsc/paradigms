@@ -463,7 +463,7 @@ def read_events_60words(
         try:
             try:
                 raw_obj = mne.io.Raw(mne_raw_obj, add_eeg_ref=False, verbose=verbose)
-            except TypeError: # in new version of mne, add_eeg_ref is gone
+            except TypeError:  # in new version of mne, add_eeg_ref is gone
                 raw_obj = mne.io.Raw(mne_raw_obj, verbose=verbose)
             return read_events_60words(
                 raw_obj, projector_delay_in_seconds=projector_delay_in_seconds, verbose=verbose)
@@ -618,7 +618,7 @@ def read_events_20questions(
                     response_event=None)
                 try:
                     words_left.remove(this_word_and_response.word_event.text)
-                except:
+                except KeyError:
                     raise ValueError(
                         'Something went wrong. Word {0} ({1}) appeared twice in question {2} ({3})'.format(
                             this_word_and_response.word_event.code,

@@ -348,6 +348,7 @@ class KRNS2(object):
 
         return stimuli
 
+    # noinspection PyMethodMayBeStatic
     def flatten(self, stimuli, single_auditory_events=True):
         for stimulus in stimuli:
             if single_auditory_events and stimulus[Stimulus.modality_attribute_name] == Stimulus.auditory_modality:

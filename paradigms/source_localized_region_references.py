@@ -49,6 +49,7 @@ class SourceLocalizedRegionReference(object):
         return self._index_sort
 
 
+# noinspection PyPep8
 def _no_hemisphere_references():
     # based on Mariya Toneva's excellent document available here:
     # https://docs.google.com/document/d/1TtN0vLOLMMTM3iuZ84ZLhj62ILQTsrrhOuNyyuxIhpc/edit
@@ -57,6 +58,7 @@ def _no_hemisphere_references():
 
     # the order below is used as the sort order from top to bottom
 
+    # noinspection PyPep8
     references = (
 
         # Frontal lobe

@@ -131,7 +131,6 @@ class GenericParadigm(object):
         self._visual_stimulus_delay_in_seconds = visual_stimulus_delay_in_seconds
         self._auditory_stimulus_delay_in_seconds = auditory_stimulus_delay_in_seconds
 
-
     @property
     def normalize(self):
         return self._normalize

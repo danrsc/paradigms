@@ -252,9 +252,13 @@ class Loader:
     def get_blocks(self, experiment, subject):
         return [r.recording for r in self.get_recordings(experiment, subject)]
 
-    def in_label(self, vertices, experiment, subject, label_name):
+    def in_label(self, sources, experiment, subject, label_name):
         with mne.utils.use_log_level(False):
             inv, mne_labels = self.load_structural(experiment, subject)
+
+        inverse_op_vertices = numpy.concatenate([inv['src'][0]['vertno'], inv['src'][1]['vertno']])
+        indicator_left = sources < len(inv['src'][0]['vertno'])
+        vertices = inverse_op_vertices[sources]
 
         label = [lbl for lbl in mne_labels if lbl.name == label_name]
         if len(label) == 0:
@@ -262,29 +266,42 @@ class Loader:
         label = label[0]
 
         if label.hemi == 'lh':
-            indicator = numpy.in1d(label.vertices, inv['src'][0]['vertno'])
-            label_vertices = label.vertices[indicator]
+            return numpy.logical_and(numpy.in1d(vertices, label.vertices), indicator_left)
         elif label.hemi == 'rh':
-            indicator = numpy.in1d(label.vertices, inv['src'][1]['vertno'])
-            label_vertices = label.vertices[indicator]
+            return numpy.logical_and(numpy.in1d(vertices, label.vertices), numpy.logical_not(indicator_left))
         else:
             assert (label.hemi == 'both')
-            indicator = numpy.in1d(label.lh.vertices, inv['src'][0]['vertno'])
-            label_vertices = label.vertices[indicator]
-            indicator = numpy.in1d(label.rh.vertices, inv['src'][1]['vertno'])
-            label_vertices = numpy.concatenate([label_vertices, label.rh.vertices[indicator]])
+            return numpy.logical_or(
+                numpy.logical_and(numpy.in1d(vertices, label.lh.vertices), indicator_left),
+                numpy.logical_and(numpy.in1d(vertices, label.rh.vertices), numpy.logical_not(indicator_left)))
 
-        return numpy.in1d(vertices, label_vertices)
-
-    def vertex_coordinates(self, subject, vertices):
+    def vertex_coordinates(self, subject, sources):
         with mne.utils.use_log_level(False):
-            _, mne_labels = self.load_structural('harryPotter', subject)
+            inv, mne_labels = self.load_structural('harryPotter', subject)
+
+        inverse_op_vertices = numpy.concatenate([inv['src'][0]['vertno'], inv['src'][1]['vertno']])
+        indicator_left = sources < len(inv['src'][0]['vertno'])
+        vertices = inverse_op_vertices[sources]
 
         pos = numpy.full((len(vertices), 3), numpy.nan)
+
+        def _set_pos_from_label(lbl):
+            if lbl.hemi == 'lh':
+                indices = numpy.flatnonzero(numpy.logical_and(numpy.in1d(vertices, lbl.vertices), indicator_left))
+            else:
+                assert(lbl.hemi == 'rh')
+                indices = numpy.flatnonzero(
+                    numpy.logical_and(numpy.in1d(vertices, lbl.vertices), numpy.logical_not(indicator_left)))
+            for i in indices:
+                pos[i] = lbl.pos[lbl.vertices == vertices[i]]
+
         for label in mne_labels:
-            indicator = numpy.in1d(label.vertices, vertices)
-            for v, p in zip(label.vertices[indicator], label.pos[indicator]):
-                pos[v == vertices] = p
+            if label.hemi == 'both':
+                _set_pos_from_label(label.lh)
+                _set_pos_from_label(label.rh)
+            else:
+                _set_pos_from_label(label)
+
         return pos
 
     def load_source_estimates(self, experiment, subject, blocks, stimulus_to_name_time_pairs, tmin, tmax):
