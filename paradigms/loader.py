@@ -252,7 +252,7 @@ class Loader:
     def get_blocks(self, experiment, subject):
         return [r.recording for r in self.get_recordings(experiment, subject)]
 
-    def in_label(self, sources, experiment, subject, label_name):
+    def in_label(self, experiment, subject, sources, label_name):
         with mne.utils.use_log_level(False):
             inv, mne_labels = self.load_structural(experiment, subject)
 
@@ -275,9 +275,9 @@ class Loader:
                 numpy.logical_and(numpy.in1d(vertices, label.lh.vertices), indicator_left),
                 numpy.logical_and(numpy.in1d(vertices, label.rh.vertices), numpy.logical_not(indicator_left)))
 
-    def vertex_coordinates(self, subject, sources):
+    def vertex_coordinates(self, experiment, subject, sources):
         with mne.utils.use_log_level(False):
-            inv, mne_labels = self.load_structural('harryPotter', subject)
+            inv, mne_labels = self.load_structural(experiment, subject)
 
         inverse_op_vertices = numpy.concatenate([inv['src'][0]['vertno'], inv['src'][1]['vertno']])
         indicator_left = sources < len(inv['src'][0]['vertno'])
@@ -310,26 +310,6 @@ class Loader:
             partition_key_fn=lambda s: 0, tmin=tmin, tmax=tmax))
         assert(len(results) == 1)
         return results[0][1]
-
-    def make_source_estimate_from_data(self, experiment, subject, data, vertices, tmin=None, tstep=None):
-        with mne.utils.use_log_level(False):
-            inv, _ = self.load_structural(experiment, subject)
-        indicator_left = numpy.in1d(vertices, inv['src'][0]['vertno'])
-        indicator_right = numpy.in1d(vertices, inv['src'][1]['vertno'])
-        if not numpy.all(numpy.logical_or(indicator_left, indicator_right)):
-            bad_vertices = vertices[numpy.logical_not(numpy.logical_or(indicator_left, indicator_right))]
-            raise ValueError('Some vertices do not exist in the inverse operator: {}'.format(bad_vertices))
-
-        left = vertices[indicator_left]
-        right = vertices[indicator_right]
-
-        # some vertices are in both left and right, so we need to adjust the data
-        indices_left = numpy.flatnonzero(indicator_left)
-        indices_right = numpy.flatnonzero(indicator_right)
-        indices = numpy.concatenate([indices_left, indices_right])
-        data = data[indices]
-
-        return mne.SourceEstimate(data, [left, right], subject=subject, tmin=tmin, tstep=tstep)
 
     def iterate_source_estimates(
             self,
