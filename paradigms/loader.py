@@ -444,6 +444,7 @@ class Loader:
             # add_eeg_ref is gone
             epochs = mne.Epochs(virtual_raw, all_events, verbose=verbose, **kwargs)
             if add_eeg_ref:
+                epochs.load_data()
                 epochs.set_eeg_reference()
         return epochs, names, events_list
 
