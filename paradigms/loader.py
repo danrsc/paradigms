@@ -410,13 +410,14 @@ class Loader:
         return epochs
 
     def load_epochs(
-            self, experiment, subject, blocks, stimulus_to_name_time_pairs, verbose=False, **kwargs):
+            self, experiment, subject, blocks, stimulus_to_name_time_pairs, baseline=None, verbose=False, **kwargs):
         epochs, names, events_list = self._load_epochs_internal(
-            experiment, subject, blocks, stimulus_to_name_time_pairs, verbose, **kwargs)
+            experiment, subject, blocks, stimulus_to_name_time_pairs, baseline=baseline, verbose=verbose, **kwargs)
         return epochs, names
 
     def _load_epochs_internal(
-            self, experiment, subject, blocks, stimulus_to_name_time_pairs, verbose=False, add_eeg_ref=False, **kwargs):
+            self, experiment, subject, blocks, stimulus_to_name_time_pairs,
+            baseline=None, verbose=False, add_eeg_ref=False, **kwargs):
         all_raw_objects = list()
         names = list()
         events_list = list()
@@ -439,10 +440,11 @@ class Loader:
         virtual_raw, all_events = mne.concatenate_raws(all_raw_objects, preload=False, events_list=events_list)
 
         try:
-            epochs = mne.Epochs(virtual_raw, all_events, add_eeg_ref=add_eeg_ref, verbose=verbose, **kwargs)
+            epochs = mne.Epochs(
+                virtual_raw, all_events, add_eeg_ref=add_eeg_ref, baseline=baseline, verbose=verbose, **kwargs)
         except TypeError:
             # add_eeg_ref is gone
-            epochs = mne.Epochs(virtual_raw, all_events, verbose=verbose, **kwargs)
+            epochs = mne.Epochs(virtual_raw, all_events, baseline=baseline, verbose=verbose, **kwargs)
             if add_eeg_ref:
                 epochs.load_data()
                 epochs.set_eeg_reference()
