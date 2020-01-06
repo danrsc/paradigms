@@ -271,6 +271,7 @@ class Loader:
             return numpy.logical_and(numpy.in1d(vertices, label.vertices), numpy.logical_not(indicator_left))
         else:
             assert (label.hemi == 'both')
+            # noinspection PyUnresolvedReferences
             return numpy.logical_or(
                 numpy.logical_and(numpy.in1d(vertices, label.lh.vertices), indicator_left),
                 numpy.logical_and(numpy.in1d(vertices, label.rh.vertices), numpy.logical_not(indicator_left)))
@@ -297,7 +298,9 @@ class Loader:
 
         for label in mne_labels:
             if label.hemi == 'both':
+                # noinspection PyUnresolvedReferences
                 _set_pos_from_label(label.lh)
+                # noinspection PyUnresolvedReferences
                 _set_pos_from_label(label.rh)
             else:
                 _set_pos_from_label(label)
